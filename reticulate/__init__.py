@@ -20,6 +20,7 @@ from reticulate.parser import (
 )
 from reticulate.product import product_statespace
 from reticulate.statespace import StateSpace, build_statespace
+from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
     "Branch",
@@ -37,8 +38,11 @@ __all__ = [
     "check_lattice",
     "compute_join",
     "compute_meet",
+    "dot_source",
+    "hasse_diagram",
     "parse",
     "pretty",
     "product_statespace",
+    "render_hasse",
     "tokenize",
 ]
