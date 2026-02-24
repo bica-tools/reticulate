@@ -1,0 +1,402 @@
+"""Session type parser: AST nodes, tokenizer, recursive-descent parser, pretty-printer.
+
+Grammar:
+    S  ::=  &{ m₁ : S₁ , … , mₙ : Sₙ }    -- branch (external choice)
+         |  +{ l₁ : S₁ , … , lₙ : Sₙ }    -- selection (internal choice)
+         |  ( S₁ || S₂ )                    -- parallel (paren notation)
+         |  ||{ S₁ , S₂ }                   -- parallel (brace notation)
+         |  rec X . S                        -- recursion
+         |  X                                -- variable
+         |  end                              -- terminated
+         |  S₁ . S₂                          -- sequencing
+
+Desugaring: `ident . S` → `Branch(((ident, S),)))`
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Union
+
+
+# ---------------------------------------------------------------------------
+# AST nodes (frozen dataclasses, hashable)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class End:
+    """Terminated session."""
+
+
+@dataclass(frozen=True)
+class Var:
+    """Type variable reference (e.g. ``X`` inside ``rec X . …``)."""
+    name: str
+
+
+@dataclass(frozen=True)
+class Branch:
+    """External choice ``&{ m₁ : S₁ , … , mₙ : Sₙ }``."""
+    choices: tuple[tuple[str, "SessionType"], ...]
+
+
+@dataclass(frozen=True)
+class Select:
+    """Internal choice ``+{ l₁ : S₁ , … , lₙ : Sₙ }``."""
+    choices: tuple[tuple[str, "SessionType"], ...]
+
+
+@dataclass(frozen=True)
+class Parallel:
+    """Parallel composition ``( S₁ || S₂ )``."""
+    left: "SessionType"
+    right: "SessionType"
+
+
+@dataclass(frozen=True)
+class Rec:
+    """Recursive type ``rec X . S``."""
+    var: str
+    body: "SessionType"
+
+
+@dataclass(frozen=True)
+class Sequence:
+    """General sequential composition ``S₁ . S₂``.
+
+    Only used when the left-hand side is *not* a bare identifier
+    (bare identifiers desugar to single-method ``Branch``).
+    """
+    left: "SessionType"
+    right: "SessionType"
+
+
+SessionType = Union[End, Var, Branch, Select, Parallel, Rec, Sequence]
+
+
+# ---------------------------------------------------------------------------
+# Tokenizer
+# ---------------------------------------------------------------------------
+
+class TokenKind(Enum):
+    LBRACE = auto()    # {
+    RBRACE = auto()    # }
+    LPAREN = auto()    # (
+    RPAREN = auto()    # )
+    AMPERSAND = auto() # &
+    PLUS = auto()      # +
+    COLON = auto()     # :
+    COMMA = auto()     # ,
+    DOT = auto()       # .
+    PAR = auto()       # ||
+    IDENT = auto()     # identifier or keyword (end, rec)
+    EOF = auto()
+
+
+@dataclass(frozen=True)
+class Token:
+    kind: TokenKind
+    value: str
+    pos: int
+
+
+class ParseError(Exception):
+    """Raised on invalid session-type syntax, with character position."""
+
+    def __init__(self, message: str, pos: int | None = None) -> None:
+        self.pos = pos
+        if pos is not None:
+            message = f"at position {pos}: {message}"
+        super().__init__(message)
+
+
+def tokenize(source: str) -> list[Token]:
+    """Scan *source* into a list of ``Token``s (including a trailing ``EOF``)."""
+    tokens: list[Token] = []
+    i = 0
+    n = len(source)
+
+    while i < n:
+        ch = source[i]
+
+        # skip whitespace
+        if ch in " \t\n\r":
+            i += 1
+            continue
+
+        # two-character token: ||
+        if ch == "|" and i + 1 < n and source[i + 1] == "|":
+            tokens.append(Token(TokenKind.PAR, "||", i))
+            i += 2
+            continue
+
+        # single-character tokens
+        single = {
+            "{": TokenKind.LBRACE,
+            "}": TokenKind.RBRACE,
+            "(": TokenKind.LPAREN,
+            ")": TokenKind.RPAREN,
+            "&": TokenKind.AMPERSAND,
+            "+": TokenKind.PLUS,
+            ":": TokenKind.COLON,
+            ",": TokenKind.COMMA,
+            ".": TokenKind.DOT,
+        }
+        if ch in single:
+            tokens.append(Token(single[ch], ch, i))
+            i += 1
+            continue
+
+        # Unicode alternatives (checked before general identifier scan
+        # because μ, ⊕, ∥ all satisfy ch.isalpha() in Python)
+        if ch == "\u2295":  # ⊕
+            tokens.append(Token(TokenKind.PLUS, "\u2295", i))
+            i += 1
+            continue
+        if ch == "\u2225":  # ∥
+            tokens.append(Token(TokenKind.PAR, "\u2225", i))
+            i += 1
+            continue
+        if ch == "\u03bc":  # μ
+            tokens.append(Token(TokenKind.IDENT, "rec", i))
+            i += 1
+            continue
+
+        # identifiers: [A-Za-z_][A-Za-z0-9_]*
+        if ch.isalpha() or ch == "_":
+            start = i
+            while i < n and (source[i].isalnum() or source[i] == "_"):
+                i += 1
+            word = source[start:i]
+            tokens.append(Token(TokenKind.IDENT, word, start))
+            continue
+
+        raise ParseError(f"unexpected character {ch!r}", i)
+
+    tokens.append(Token(TokenKind.EOF, "", n))
+    return tokens
+
+
+# ---------------------------------------------------------------------------
+# Recursive-descent parser
+# ---------------------------------------------------------------------------
+
+class _Parser:
+    """Internal parser state."""
+
+    def __init__(self, tokens: list[Token]) -> None:
+        self._tokens = tokens
+        self._pos = 0
+
+    # -- helpers -------------------------------------------------------------
+
+    def _peek(self) -> Token:
+        return self._tokens[self._pos]
+
+    def _advance(self) -> Token:
+        tok = self._tokens[self._pos]
+        self._pos += 1
+        return tok
+
+    def _expect(self, kind: TokenKind, context: str = "") -> Token:
+        tok = self._peek()
+        if tok.kind is not kind:
+            ctx = f" ({context})" if context else ""
+            raise ParseError(
+                f"expected {kind.name}, got {tok.kind.name} ({tok.value!r}){ctx}",
+                tok.pos,
+            )
+        return self._advance()
+
+    # -- grammar rules -------------------------------------------------------
+
+    def parse(self) -> SessionType:
+        result = self._seq_expr()
+        if self._peek().kind is not TokenKind.EOF:
+            tok = self._peek()
+            raise ParseError(
+                f"unexpected token {tok.kind.name} ({tok.value!r}) after expression",
+                tok.pos,
+            )
+        return result
+
+    def _seq_expr(self) -> SessionType:
+        """Parse a sequence expression (right-associative ``.`` operator).
+
+        If the left operand is a bare identifier we desugar ``ident . S``
+        to ``Branch(((ident, S),))``.  Otherwise we produce a ``Sequence``
+        node.
+        """
+        left = self._atom()
+
+        if self._peek().kind is TokenKind.DOT:
+            self._advance()  # consume '.'
+            right = self._seq_expr()  # right-associative
+
+            # Desugaring: bare identifier becomes single-method Branch
+            if isinstance(left, Var):
+                return Branch(((left.name, right),))
+            return Sequence(left, right)
+
+        return left
+
+    def _atom(self) -> SessionType:
+        """Parse a self-delimiting construct."""
+        tok = self._peek()
+
+        # &{ ... }
+        if tok.kind is TokenKind.AMPERSAND:
+            return self._branch()
+
+        # +{ ... } or ⊕{ ... }
+        if tok.kind is TokenKind.PLUS:
+            return self._select()
+
+        # ( ... )  — either parenthesized expression or parallel
+        if tok.kind is TokenKind.LPAREN:
+            return self._paren_or_parallel()
+
+        # ||{ S₁ , S₂ } — alternative parallel notation
+        if tok.kind is TokenKind.PAR:
+            return self._brace_parallel()
+
+        # rec X . S
+        if tok.kind is TokenKind.IDENT and tok.value == "rec":
+            return self._rec()
+
+        # end
+        if tok.kind is TokenKind.IDENT and tok.value == "end":
+            self._advance()
+            return End()
+
+        # plain identifier (type variable or method name)
+        if tok.kind is TokenKind.IDENT:
+            self._advance()
+            return Var(tok.value)
+
+        raise ParseError(
+            f"unexpected token {tok.kind.name} ({tok.value!r})", tok.pos
+        )
+
+    def _choice_list(self, context: str) -> tuple[tuple[str, SessionType], ...]:
+        """Parse ``m₁ : S₁ , … , mₙ : Sₙ`` inside braces."""
+        entries: list[tuple[str, SessionType]] = []
+        while True:
+            label_tok = self._expect(TokenKind.IDENT, f"{context} label")
+            self._expect(TokenKind.COLON, f"{context} colon after {label_tok.value!r}")
+            body = self._seq_expr()
+            entries.append((label_tok.value, body))
+            if self._peek().kind is TokenKind.COMMA:
+                self._advance()
+            else:
+                break
+        return tuple(entries)
+
+    def _branch(self) -> Branch:
+        self._advance()  # consume '&'
+        self._expect(TokenKind.LBRACE, "branch")
+        if self._peek().kind is TokenKind.RBRACE:
+            raise ParseError("branch must have at least one choice", self._peek().pos)
+        choices = self._choice_list("branch")
+        self._expect(TokenKind.RBRACE, "branch closing")
+        return Branch(choices)
+
+    def _select(self) -> Select:
+        self._advance()  # consume '+'
+        self._expect(TokenKind.LBRACE, "select")
+        if self._peek().kind is TokenKind.RBRACE:
+            raise ParseError("select must have at least one choice", self._peek().pos)
+        choices = self._choice_list("select")
+        self._expect(TokenKind.RBRACE, "select closing")
+        return Select(choices)
+
+    def _paren_or_parallel(self) -> SessionType:
+        """Parse ``( S₁ || S₂ )`` or ``( S )``."""
+        self._advance()  # consume '('
+        left = self._seq_expr()
+
+        if self._peek().kind is TokenKind.PAR:
+            self._advance()  # consume '||'
+            right = self._seq_expr()
+            self._expect(TokenKind.RPAREN, "parallel closing")
+            return Parallel(left, right)
+
+        # Plain grouping
+        self._expect(TokenKind.RPAREN, "parenthesized expression closing")
+        return left
+
+    def _brace_parallel(self) -> Parallel:
+        """Parse ``||{ S₁ , S₂ }`` — alternative parallel notation."""
+        self._advance()  # consume '||'
+        self._expect(TokenKind.LBRACE, "parallel brace notation")
+        left = self._seq_expr()
+        self._expect(TokenKind.COMMA, "parallel separator (expected ',')")
+        right = self._seq_expr()
+        self._expect(TokenKind.RBRACE, "parallel brace closing")
+        return Parallel(left, right)
+
+    def _rec(self) -> Rec:
+        self._advance()  # consume 'rec'
+        var_tok = self._expect(TokenKind.IDENT, "recursion variable")
+        if var_tok.value in ("rec", "end"):
+            raise ParseError(
+                f"{var_tok.value!r} is a keyword, not a valid variable name",
+                var_tok.pos,
+            )
+        self._expect(TokenKind.DOT, "recursion dot")
+        body = self._seq_expr()
+        return Rec(var_tok.value, body)
+
+
+def parse(source: str) -> SessionType:
+    """Parse a session-type string into an AST.
+
+    Raises ``ParseError`` on invalid syntax.
+
+    Examples::
+
+        >>> parse("end")
+        End()
+        >>> parse("m . end")
+        Branch(choices=(('m', End()),))
+    """
+    tokens = tokenize(source)
+    return _Parser(tokens).parse()
+
+
+# ---------------------------------------------------------------------------
+# Pretty-printer
+# ---------------------------------------------------------------------------
+
+def pretty(node: SessionType) -> str:
+    """Render an AST back to a human-readable session-type string.
+
+    Single-element ``Branch`` is printed as sequencing sugar (``m . S``).
+    """
+    match node:
+        case End():
+            return "end"
+        case Var(name=name):
+            return name
+        case Branch(choices=choices) if len(choices) == 1:
+            label, body = choices[0]
+            return f"{label} . {pretty(body)}"
+        case Branch(choices=choices):
+            inner = ", ".join(
+                f"{label}: {pretty(body)}" for label, body in choices
+            )
+            return f"&{{{inner}}}"
+        case Select(choices=choices):
+            inner = ", ".join(
+                f"{label}: {pretty(body)}" for label, body in choices
+            )
+            return f"+{{{inner}}}"
+        case Parallel(left=left, right=right):
+            return f"({pretty(left)} || {pretty(right)})"
+        case Rec(var=var, body=body):
+            return f"rec {var} . {pretty(body)}"
+        case Sequence(left=left, right=right):
+            return f"{pretty(left)} . {pretty(right)}"
+        case _:
+            raise TypeError(f"unknown AST node: {type(node).__name__}")

@@ -1,0 +1,80 @@
+"""Product construction for parallel session types.
+
+Given two state spaces L₁ and L₂, constructs the product poset L₁ × L₂:
+
+    (s₁, s₂) ≤ (s₁', s₂')   iff   s₁ ≤₁ s₁'  and  s₂ ≤₂ s₂'
+
+Transitions from (s₁, s₂) include all transitions from s₁ (advancing the
+left component) and all transitions from s₂ (advancing the right component).
+
+See docs/parallel-constructor-spec.md Section 4.2.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reticulate.statespace import StateSpace
+
+
+def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
+    """Construct the product state space L₁ × L₂.
+
+    The result has:
+    - ``|L₁| × |L₂|`` states (one per concurrent configuration)
+    - Top = ``(left.top, right.top)`` — the fork point
+    - Bottom = ``(left.bottom, right.bottom)`` — the join point
+    - Transitions: from ``(s₁, s₂)``, every left-transition advances s₁
+      and every right-transition advances s₂
+
+    Both operands must be fully constructed ``StateSpace`` objects.
+    """
+    from reticulate.statespace import StateSpace as SS
+
+    # Pre-compute adjacency lists for efficiency
+    left_adj: dict[int, list[tuple[str, int]]] = {s: [] for s in left.states}
+    for src, lbl, tgt in left.transitions:
+        left_adj[src].append((lbl, tgt))
+
+    right_adj: dict[int, list[tuple[str, int]]] = {s: [] for s in right.states}
+    for src, lbl, tgt in right.transitions:
+        right_adj[src].append((lbl, tgt))
+
+    # Assign fresh IDs to product states
+    next_id = 0
+    pair_to_id: dict[tuple[int, int], int] = {}
+    id_labels: dict[int, str] = {}
+
+    for s1 in left.states:
+        for s2 in right.states:
+            sid = next_id
+            next_id += 1
+            pair_to_id[(s1, s2)] = sid
+            l1 = left.labels.get(s1, str(s1))
+            l2 = right.labels.get(s2, str(s2))
+            id_labels[sid] = f"({l1}, {l2})"
+
+    # Build transitions
+    transitions: list[tuple[int, str, int]] = []
+
+    for s1 in left.states:
+        for s2 in right.states:
+            src = pair_to_id[(s1, s2)]
+            # Left-component transitions: (s1, s2) --[l]--> (s1', s2)
+            for lbl, s1_tgt in left_adj[s1]:
+                transitions.append((src, lbl, pair_to_id[(s1_tgt, s2)]))
+            # Right-component transitions: (s1, s2) --[l]--> (s1, s2')
+            for lbl, s2_tgt in right_adj[s2]:
+                transitions.append((src, lbl, pair_to_id[(s1, s2_tgt)]))
+
+    top = pair_to_id[(left.top, right.top)]
+    bottom = pair_to_id[(left.bottom, right.bottom)]
+
+    return SS(
+        states=set(pair_to_id.values()),
+        transitions=transitions,
+        top=top,
+        bottom=bottom,
+        labels=id_labels,
+    )
