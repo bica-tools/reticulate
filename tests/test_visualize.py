@@ -123,37 +123,33 @@ class TestDotSourceWithResult:
         assert "Diamond lattice" in src
 
 
-class TestDotSourceSccCollapse:
-    def test_collapsed_nodes(self) -> None:
+class TestDotSourceWithCycles:
+    def test_all_nodes_shown(self) -> None:
         # rec X . &{a: &{b: X}, done: end}
-        # Without result: the rec body creates a cycle (states in same SCC)
+        # The rec body creates a cycle — all nodes should be visible
         type_str = "rec X . &{a: &{b: X}, done: end}"
         ss = build_statespace(parse(type_str))
         result = check_lattice(ss)
 
         src_plain = dot_source(ss)
-        src_collapsed = dot_source(ss, result)
+        src_with_result = dot_source(ss, result)
 
-        # Collapsed version should have fewer node lines
+        # Both versions should show the same nodes — no collapsing
         plain_nodes = [l for l in src_plain.splitlines() if "[" in l and "label=" in l and "->" not in l]
-        collapsed_nodes = [l for l in src_collapsed.splitlines() if "[" in l and "label=" in l and "->" not in l]
+        result_nodes = [l for l in src_with_result.splitlines() if "[" in l and "label=" in l and "->" not in l]
 
-        assert len(collapsed_nodes) <= len(plain_nodes)
+        assert len(result_nodes) == len(plain_nodes)
 
-    def test_scc_label_shows_count(self) -> None:
+    def test_cycle_edges_shown(self) -> None:
         type_str = "rec X . &{a: &{b: X}, done: end}"
         ss = build_statespace(parse(type_str))
         result = check_lattice(ss)
 
-        # There should be an SCC with >1 member
-        scc_groups: dict[int, set[int]] = {}
-        for state, rep in result.scc_map.items():
-            scc_groups.setdefault(rep, set()).add(state)
+        src = dot_source(ss, result)
 
-        has_multi = any(len(members) > 1 for members in scc_groups.values())
-        if has_multi:
-            src = dot_source(ss, result)
-            assert "\u00d7" in src  # × symbol in (×N)
+        # All transitions should be present, including the back-edge
+        edge_lines = [l for l in src.splitlines() if "->" in l]
+        assert len(edge_lines) == len(ss.transitions)
 
 
 class TestDotSourceNoLabels:

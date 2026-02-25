@@ -1,8 +1,8 @@
 """Visualization of session type state spaces as Hasse diagrams.
 
 Generates Graphviz DOT representations of state-space transition systems.
-Supports SCC collapsing (when a LatticeResult is provided), counterexample
-highlighting, and optional label/edge-label toggling.
+Supports counterexample highlighting and optional label/edge-label toggling.
+All states and transitions (including recursion cycles) are shown explicitly.
 
 The ``dot_source()`` function uses only the standard library and is always
 available.  ``hasse_diagram()`` and ``render_hasse()`` require the ``graphviz``
@@ -49,8 +49,7 @@ def hasse_diagram(
 ) -> "graphviz.Digraph":  # type: ignore[name-defined]
     """Build a Graphviz ``Digraph`` for the Hasse diagram of *ss*.
 
-    If *result* is provided, uses SCC info to collapse cyclic states
-    and can highlight counterexample pairs.
+    If *result* is provided, highlights counterexample pairs.
 
     Raises ``ImportError`` if the ``graphviz`` Python package is not installed.
     """
@@ -131,9 +130,13 @@ def _build_dot(
         counter_states.add(result.counterexample[1])
 
     if result is not None:
-        _build_dot_collapsed(ss, result, lines, labels, edge_labels, counter_states)
+        _build_dot_with_result(ss, result, lines, labels, edge_labels, counter_states)
     else:
         _build_dot_plain(ss, lines, labels, edge_labels)
+
+    # Pin top and bottom to the top and bottom of the layout
+    lines.append(f'    {{rank=source; {ss.top}}}')
+    lines.append(f'    {{rank=sink; {ss.bottom}}}')
 
     lines.append("}")
     return "\n".join(lines)
@@ -158,7 +161,7 @@ def _build_dot_plain(
         lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 
 
-def _build_dot_collapsed(
+def _build_dot_with_result(
     ss: StateSpace,
     result: LatticeResult,
     lines: list[str],
@@ -166,73 +169,23 @@ def _build_dot_collapsed(
     edge_labels: bool,
     counter_states: set[int],
 ) -> None:
-    """Add nodes/edges with SCC collapsing."""
-    scc_map = result.scc_map
-
-    # Group states by their SCC representative
-    scc_groups: dict[int, set[int]] = {}
-    for state, rep in scc_map.items():
-        scc_groups.setdefault(rep, set()).add(state)
-
-    # Determine the set of SCC representatives (one node per SCC)
-    reps = sorted(scc_groups.keys())
-
-    for rep in reps:
-        members = scc_groups[rep]
-        count = len(members)
-
-        if labels:
-            raw_label = ss.labels.get(rep, str(rep))
-            if count > 1:
-                raw_label = f"{raw_label} (\u00d7{count})"
-        else:
-            raw_label = str(rep)
-            if count > 1:
-                raw_label = f"{raw_label} (\u00d7{count})"
-
-        # Apply top/bottom prefix based on whether this rep IS the top/bottom
-        if rep == ss.top:
-            raw_label = f"\u22a4 {raw_label}"
-        elif rep == ss.bottom:
-            raw_label = f"\u22a5 {raw_label}"
-
-        node_label = _truncate(raw_label)
-        attrs: dict[str, str] = {"label": node_label}
-
-        # Fill color
-        if rep == ss.top:
-            attrs["fillcolor"] = "#bfdbfe"
-        elif rep == ss.bottom:
-            attrs["fillcolor"] = "#bbf7d0"
-        else:
-            attrs["fillcolor"] = "#f8fafc"
-
-        # SCC with >1 member: dashed border
-        if count > 1:
-            attrs["style"] = "filled,rounded,dashed"
+    """Add all nodes/edges with counterexample highlighting."""
+    for sid in sorted(ss.states):
+        node_label = _node_label(ss, sid, labels)
+        attrs = _node_attrs(ss, sid, node_label)
 
         # Counterexample highlight
-        if rep in counter_states:
+        if sid in counter_states:
             attrs["color"] = "red"
             attrs["penwidth"] = "2"
 
-        lines.append(f'    {rep} [{_fmt_attrs(attrs)}];')
+        lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
 
-    # Edges: only inter-SCC, deduplicated
-    seen_edges: set[tuple[int, int, str]] = set()
     for src, lbl, tgt in ss.transitions:
-        src_rep = scc_map.get(src, src)
-        tgt_rep = scc_map.get(tgt, tgt)
-        if src_rep == tgt_rep:
-            continue  # within-SCC edge: omit
-        key = (src_rep, tgt_rep, lbl)
-        if key in seen_edges:
-            continue
-        seen_edges.add(key)
         edge_attrs: dict[str, str] = {}
         if edge_labels:
             edge_attrs["label"] = lbl
-        lines.append(f'    {src_rep} -> {tgt_rep}{_fmt_edge_attrs(edge_attrs)};')
+        lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 
 
 # ---------------------------------------------------------------------------

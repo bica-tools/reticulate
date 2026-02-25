@@ -131,7 +131,10 @@ class _Builder:
                 return env[name]
 
             case Branch(choices=choices):
-                label = "&{" + ", ".join(l for l, _ in choices) + "}"
+                if len(choices) == 1:
+                    label = choices[0][0]
+                else:
+                    label = "&{" + ", ".join(l for l, _ in choices) + "}"
                 entry = self._fresh(label)
                 for lbl, body in choices:
                     target = self._build(body, env, end_id)
