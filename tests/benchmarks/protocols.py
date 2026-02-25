@@ -1,6 +1,6 @@
 """Benchmark protocol definitions for the reticulate test suite.
 
-15 real-world and classic protocols expressed as session types, covering
+30 real-world and classic protocols expressed as session types, covering
 all constructors: branch (&), selection (+), parallel (||), recursion (rec),
 and sequencing (.).
 """
@@ -299,5 +299,223 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_transitions=13,
         expected_sccs=11,
         uses_parallel=True,
+    ),
+    # 18. TLS Handshake
+    BenchmarkProtocol(
+        name="TLS Handshake",
+        type_string=(
+            "clientHello . +{HELLO_RETRY: clientHello . serverHello . "
+            "&{certificate: verify . changeCipher . end, "
+            "psk: changeCipher . end}, "
+            "SERVER_HELLO: &{certificate: verify . changeCipher . end, "
+            "psk: changeCipher . end}}"
+        ),
+        description=(
+            "A TLS 1.3 handshake: client hello with possible hello retry, "
+            "then server hello with certificate or PSK-based cipher change."
+        ),
+        expected_states=13,
+        expected_transitions=15,
+        expected_sccs=13,
+        uses_parallel=False,
+    ),
+    # 19. Raft Leader Election
+    BenchmarkProtocol(
+        name="Raft Leader Election",
+        type_string=(
+            "rec X . +{TIMEOUT: requestVote . +{ELECTED: rec Y . "
+            "&{appendEntries: +{ACK: Y, NACK: Y}, heartbeatTimeout: Y, "
+            "stepDown: X}, REJECTED: X}, HEARTBEAT: X, SHUTDOWN: end}"
+        ),
+        description=(
+            "Raft consensus leader election: followers timeout, request votes, "
+            "become leader (append entries, heartbeat) or step down."
+        ),
+        expected_states=6,
+        expected_transitions=11,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 20. MQTT Client
+    BenchmarkProtocol(
+        name="MQTT Client",
+        type_string=(
+            "connect . +{CONNACK: (rec X . &{publish: +{PUBACK: X, "
+            "TIMEOUT: X}, disconnect: end} || rec Y . +{MESSAGE: Y, "
+            "SUBACK: Y, DONE: end}) . end, REFUSED: end}"
+        ),
+        description=(
+            "An MQTT client session: connect, then if accepted, concurrently "
+            "publish messages (with ack/timeout) and receive messages/subacks."
+        ),
+        expected_states=8,
+        expected_transitions=20,
+        expected_sccs=6,
+        uses_parallel=True,
+    ),
+    # 21. Circuit Breaker
+    BenchmarkProtocol(
+        name="Circuit Breaker",
+        type_string=(
+            "rec X . &{call: +{SUCCESS: X, FAILURE: +{TRIPPED: rec Y . "
+            "&{probe: +{OK: X, FAIL: Y}, timeout: end}, OK: X}}, "
+            "reset: end}"
+        ),
+        description=(
+            "A circuit breaker pattern: closed state accepts calls (success "
+            "loops, failure may trip), open state probes for recovery."
+        ),
+        expected_states=6,
+        expected_transitions=10,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 22. Connection Pool
+    BenchmarkProtocol(
+        name="Connection Pool",
+        type_string=(
+            "init . (rec X . &{acquire: use . release . X, drain: end} || "
+            "rec Y . &{healthCheck: +{HEALTHY: Y, UNHEALTHY: Y}, "
+            "shutdown: end})"
+        ),
+        description=(
+            "A connection pool: initialize, then concurrently handle "
+            "acquire/use/release cycles and health checks with shutdown."
+        ),
+        expected_states=13,
+        expected_transitions=29,
+        expected_sccs=5,
+        uses_parallel=True,
+    ),
+    # 23. gRPC BiDi Stream
+    BenchmarkProtocol(
+        name="gRPC BiDi Stream",
+        type_string=(
+            "open . (rec X . &{send: X, halfClose: end} || "
+            "rec Y . +{RESPONSE: Y, TRAILER: end})"
+        ),
+        description=(
+            "A gRPC bidirectional streaming RPC: open, then concurrently "
+            "send requests (with half-close) and receive responses/trailers."
+        ),
+        expected_states=5,
+        expected_transitions=9,
+        expected_sccs=5,
+        uses_parallel=True,
+    ),
+    # 24. Blockchain Tx
+    BenchmarkProtocol(
+        name="Blockchain Tx",
+        type_string=(
+            "createTx . sign . broadcast . rec X . +{PENDING: X, "
+            "CONFIRMED: &{getReceipt: end}, DROPPED: end, FAILED: end}"
+        ),
+        description=(
+            "A blockchain transaction lifecycle: create, sign, broadcast, "
+            "then poll for confirmation, drop, or failure."
+        ),
+        expected_states=6,
+        expected_transitions=8,
+        expected_sccs=6,
+        uses_parallel=False,
+    ),
+    # 25. Kafka Consumer
+    BenchmarkProtocol(
+        name="Kafka Consumer",
+        type_string=(
+            "subscribe . (rec X . &{poll: +{RECORDS: process . commit . X, "
+            "EMPTY: X}, pause: end} || rec Y . +{REBALANCE: Y, "
+            "REVOKED: end})"
+        ),
+        description=(
+            "A Kafka consumer: subscribe, then concurrently poll/process/commit "
+            "records and handle rebalance/revocation events."
+        ),
+        expected_states=11,
+        expected_transitions=23,
+        expected_sccs=5,
+        uses_parallel=True,
+    ),
+    # 26. Rate Limiter
+    BenchmarkProtocol(
+        name="Rate Limiter",
+        type_string=(
+            "rec X . &{tryAcquire: +{ALLOWED: X, THROTTLED: "
+            "&{wait: X, abort: end}}, close: end}"
+        ),
+        description=(
+            "A rate limiter: repeatedly try to acquire a permit (allowed loops, "
+            "throttled can wait or abort), or close."
+        ),
+        expected_states=4,
+        expected_transitions=6,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 27. Saga Orchestrator
+    BenchmarkProtocol(
+        name="Saga Orchestrator",
+        type_string=(
+            "begin . (step1 . +{OK: end, FAIL: compensate1 . end} || "
+            "step2 . +{OK: end, FAIL: compensate2 . end}) . "
+            "+{ALL_OK: commit . end, PARTIAL: rollback . end}"
+        ),
+        description=(
+            "A saga orchestrator: begin, then run two steps concurrently "
+            "(each may fail and compensate), then commit or rollback."
+        ),
+        expected_states=20,
+        expected_transitions=37,
+        expected_sccs=20,
+        uses_parallel=True,
+    ),
+    # 28. Two-Phase Commit
+    BenchmarkProtocol(
+        name="Two-Phase Commit",
+        type_string=(
+            "prepare . &{allYes: commit . +{ACK: end, TIMEOUT: abort . end}, "
+            "anyNo: abort . end}"
+        ),
+        description=(
+            "Two-phase commit protocol: prepare, then either all vote yes "
+            "(commit with ack or timeout-abort) or any votes no (abort)."
+        ),
+        expected_states=7,
+        expected_transitions=8,
+        expected_sccs=7,
+        uses_parallel=False,
+    ),
+    # 29. Leader Replication
+    BenchmarkProtocol(
+        name="Leader Replication",
+        type_string=(
+            "electLeader . rec X . &{write: (replicate1 . +{ACK: end, "
+            "NACK: end} || replicate2 . +{ACK: end, NACK: end}) . "
+            "+{QUORUM: apply . X, NO_QUORUM: X}, stepDown: end}"
+        ),
+        description=(
+            "Leader-based replication: elect leader, then repeatedly write "
+            "with parallel replication to two nodes, check quorum, or step down."
+        ),
+        expected_states=13,
+        expected_transitions=24,
+        expected_sccs=3,
+        uses_parallel=True,
+    ),
+    # 30. Failover
+    BenchmarkProtocol(
+        name="Failover",
+        type_string=(
+            "connect . rec X . &{request: +{OK: X, FAIL: reconnect . "
+            "+{UP: X, DOWN: end}}, close: end}"
+        ),
+        description=(
+            "A failover protocol: connect, then repeatedly request (OK loops, "
+            "FAIL triggers reconnect with UP/DOWN), or close."
+        ),
+        expected_states=6,
+        expected_transitions=8,
+        expected_sccs=3,
+        uses_parallel=False,
     ),
 ]

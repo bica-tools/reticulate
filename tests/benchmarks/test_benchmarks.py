@@ -1,4 +1,4 @@
-"""Parametrized tests for the 15 benchmark protocols.
+"""Parametrized tests for the 30 benchmark protocols.
 
 Each protocol is parsed, its state space is built, and the lattice
 properties are verified against expected metrics.
@@ -96,8 +96,8 @@ def test_top_reaches_bottom(protocol: BenchmarkProtocol) -> None:
 class TestBenchmarkSuite:
     """Tests about the benchmark suite itself."""
 
-    def test_all_17_present(self) -> None:
-        assert len(BENCHMARKS) == 17
+    def test_all_30_present(self) -> None:
+        assert len(BENCHMARKS) == 30
 
     def test_unique_names(self) -> None:
         names = [p.name for p in BENCHMARKS]
@@ -114,9 +114,16 @@ class TestBenchmarkSuite:
             "HTTP Connection",
             "DB Transaction",
             "Java Iterator",
+            "TLS Handshake",
+            "Raft Leader Election",
+            "Circuit Breaker",
+            "Two-Phase Commit",
+            "Saga Orchestrator",
+            "Kafka Consumer",
+            "Failover",
         }
         assert required.issubset(names)
 
     def test_parallel_count(self) -> None:
         parallel_count = sum(1 for p in BENCHMARKS if p.uses_parallel)
-        assert parallel_count >= 3
+        assert parallel_count >= 10
