@@ -231,3 +231,50 @@ class TestGenerate:
     def test_truncation_warning(self):
         out = gen("&{a: end, b: end}", TestGenConfig("Obj", max_paths=1))
         assert "WARNING" in out
+
+    def test_select_steps_emitted_as_comments(self):
+        out = gen("m . +{OK: end, ERR: end}")
+        assert "// -> OK (selected by object)" in out
+        assert "// -> ERR (selected by object)" in out
+        assert "obj.m()" in out
+
+    def test_select_only_no_violations(self):
+        out = gen("+{OK: end, ERR: end}")
+        assert "Violations (0)" in out
+
+    def test_mixed_protocol_no_violations_at_selection_state(self):
+        out = gen("m . +{OK: end, ERR: end}")
+        assert "Violations (0)" in out
+
+
+# =========================================================================
+# Step kind
+# =========================================================================
+
+
+class TestStepKind:
+    def test_select_steps_have_selection_kind(self):
+        paths, _ = enumerate_valid_paths(ss("+{OK: end, ERR: end}"), 2)
+        for path in paths:
+            for step in path.steps:
+                assert step.kind == "selection"
+
+    def test_branch_steps_have_method_kind(self):
+        paths, _ = enumerate_valid_paths(ss("&{m: end, n: end}"), 2)
+        for path in paths:
+            for step in path.steps:
+                assert step.kind == "method"
+
+    def test_mixed_protocol_step_kinds(self):
+        paths, _ = enumerate_valid_paths(ss("m . +{OK: end, ERR: end}"), 2)
+        for path in paths:
+            assert path.steps[0].kind == "method"
+            assert path.steps[1].kind == "selection"
+
+    def test_select_only_no_violations(self):
+        violations = enumerate_violations(ss("+{OK: end, ERR: end}"))
+        assert violations == []
+
+    def test_mixed_protocol_skips_pure_selection_state(self):
+        violations = enumerate_violations(ss("m . +{OK: end, ERR: end}"))
+        assert violations == []

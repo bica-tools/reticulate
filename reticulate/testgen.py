@@ -21,9 +21,10 @@ from reticulate.statespace import StateSpace
 
 
 class Step(NamedTuple):
-    """A single step in a path: transition label and target state."""
+    """A single step in a path: transition label, target state, and kind."""
     label: str
     target: int
+    kind: str = "method"  # "method" or "selection"
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,8 @@ def _dfs(
 
     visit_counts[state] = count + 1
     for label, target in ss.enabled(state):
-        path.append(Step(label, target))
+        kind = "selection" if ss.is_selection(state, label, target) else "method"
+        path.append(Step(label, target, kind))
         done = _dfs(ss, target, path, visit_counts, paths,
                      max_revisits, max_paths)
         path.pop()
@@ -123,20 +125,34 @@ def _dfs(
 
 
 def enumerate_violations(ss: StateSpace) -> list[ViolationPoint]:
-    """BFS from top to find shortest prefix, then identify disabled methods."""
-    all_labels = {label for _, label, _ in ss.transitions}
+    """BFS from top to find shortest prefix, then identify disabled methods.
+
+    Only METHOD labels are considered for violations. Pure selection states
+    (no methods enabled, only selections) are skipped entirely.
+    """
+    # Only METHOD labels — selection labels are not callable by the client
+    all_method_labels = {
+        label for src, label, tgt in ss.transitions
+        if not ss.is_selection(src, label, tgt)
+    }
     shortest = _bfs_shortest_prefixes(ss)
     violations: list[ViolationPoint] = []
     for state, prefix in shortest.items():
         if state == ss.bottom:
             continue
-        enabled = frozenset(label for label, _ in ss.enabled(state))
-        disabled = sorted(all_labels - enabled)
+        enabled_methods = frozenset(
+            label for label, _ in ss.enabled_methods(state)
+        )
+        enabled_selections = ss.enabled_selections(state)
+        # Skip pure selection states: the client has no agency here
+        if not enabled_methods and enabled_selections:
+            continue
+        disabled = sorted(all_method_labels - enabled_methods)
         for method in disabled:
             violations.append(ViolationPoint(
                 state=state,
                 disabled_method=method,
-                enabled_methods=enabled,
+                enabled_methods=enabled_methods,
                 prefix_path=prefix,
             ))
     return violations
@@ -151,7 +167,8 @@ def _bfs_shortest_prefixes(ss: StateSpace) -> OrderedDict[int, tuple[Step, ...]]
         current = prefixes[state]
         for label, target in ss.enabled(state):
             if target not in prefixes:
-                prefixes[target] = current + (Step(label, target),)
+                kind = "selection" if ss.is_selection(state, label, target) else "method"
+                prefixes[target] = current + (Step(label, target, kind),)
                 queue.append(target)
     return prefixes
 
@@ -227,8 +244,11 @@ def generate_test_source(
         lines.append("    @Test")
         lines.append(f"    void validPath_{suffix}() {{")
         lines.append(f"        {config.class_name} {config.var_name} = new {config.class_name}();")
-        for label in labels:
-            lines.append(f"        {config.var_name}.{label}();")
+        for step in path.steps:
+            if step.kind == "selection":
+                lines.append(f"        // -> {step.label} (selected by object)")
+            else:
+                lines.append(f"        {config.var_name}.{step.label}();")
         lines.append("    }")
 
     # Violations
@@ -251,8 +271,11 @@ def generate_test_source(
         lines.append("    @Test")
         lines.append(f"    void violation_{suffix}() {{")
         lines.append(f"        {config.class_name} {config.var_name} = new {config.class_name}();")
-        for label in prefix_labels:
-            lines.append(f"        {config.var_name}.{label}();")
+        for step in v.prefix_path:
+            if step.kind == "selection":
+                lines.append(f"        // -> {step.label} (selected by object)")
+            else:
+                lines.append(f"        {config.var_name}.{step.label}();")
         lines.append(f"        {config.var_name}.{v.disabled_method}(); // VIOLATION: not enabled here")
         lines.append("    }")
 
@@ -272,8 +295,11 @@ def generate_test_source(
         lines.append("    @Test")
         lines.append(f"    void incomplete_{suffix}() {{")
         lines.append(f"        {config.class_name} {config.var_name} = new {config.class_name}();")
-        for label in labels:
-            lines.append(f"        {config.var_name}.{label}();")
+        for step in p.steps:
+            if step.kind == "selection":
+                lines.append(f"        // -> {step.label} (selected by object)")
+            else:
+                lines.append(f"        {config.var_name}.{step.label}();")
         lines.append(f"        // NOT COMPLETE: enabled methods remain: {remaining_str}")
         lines.append("    }")
 
