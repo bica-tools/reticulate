@@ -4,12 +4,17 @@ import pytest
 from reticulate.parser import parse, pretty
 from reticulate.statespace import build_statespace
 from reticulate.testgen import (
+    ClientProgram,
     EnumerationResult,
     IncompletePrefix,
+    MethodCallNode,
+    SelectionSwitchNode,
+    TerminalNode,
     TestGenConfig,
     ValidPath,
     ViolationPoint,
     enumerate,
+    enumerate_client_programs,
     enumerate_incomplete_prefixes,
     enumerate_valid_paths,
     enumerate_violations,
@@ -232,11 +237,12 @@ class TestGenerate:
         out = gen("&{a: end, b: end}", TestGenConfig("Obj", max_paths=1))
         assert "WARNING" in out
 
-    def test_select_steps_emitted_as_comments(self):
+    def test_select_steps_emitted_as_switch(self):
         out = gen("m . +{OK: end, ERR: end}")
-        assert "// -> OK (selected by object)" in out
-        assert "// -> ERR (selected by object)" in out
-        assert "obj.m()" in out
+        assert "var mResult = obj.m();" in out
+        assert "switch (mResult)" in out
+        assert "case OK ->" in out
+        assert "case ERR ->" in out
 
     def test_select_only_no_violations(self):
         out = gen("+{OK: end, ERR: end}")
@@ -278,3 +284,155 @@ class TestStepKind:
     def test_mixed_protocol_skips_pure_selection_state(self):
         violations = enumerate_violations(ss("m . +{OK: end, ERR: end}"))
         assert violations == []
+
+
+# =========================================================================
+# Client programs — tree-shaped with selection switches
+# =========================================================================
+
+
+class TestClientPrograms:
+    def test_end_type_single_terminal(self):
+        programs, truncated = enumerate_client_programs(ss("end"), 2)
+        assert len(programs) == 1
+        assert isinstance(programs[0], TerminalNode)
+        assert not truncated
+
+    def test_simple_chain(self):
+        programs, _ = enumerate_client_programs(ss("a . b . end"), 2)
+        assert len(programs) == 1
+        cp = programs[0]
+        assert isinstance(cp, MethodCallNode)
+        assert cp.label == "a"
+        assert isinstance(cp.next, MethodCallNode)
+        assert cp.next.label == "b"
+        assert isinstance(cp.next.next, TerminalNode)
+
+    def test_branch_two_programs(self):
+        programs, _ = enumerate_client_programs(ss("&{m: end, n: end}"), 2)
+        assert len(programs) == 2
+        labels = {p.label for p in programs if isinstance(p, MethodCallNode)}
+        assert labels == {"m", "n"}
+
+    def test_simple_selection_switch(self):
+        programs, _ = enumerate_client_programs(ss("m . +{OK: end, ERR: end}"), 2)
+        assert len(programs) == 1
+        cp = programs[0]
+        assert isinstance(cp, SelectionSwitchNode)
+        assert cp.method_label == "m"
+        assert set(cp.branches.keys()) == {"OK", "ERR"}
+        for branch in cp.branches.values():
+            assert isinstance(branch, TerminalNode)
+
+    def test_selection_with_sub_branches_zip(self):
+        programs, _ = enumerate_client_programs(
+            ss("m . +{A: &{x: end, y: end}, B: end}"), 2)
+        assert len(programs) == 2
+        for cp in programs:
+            assert isinstance(cp, SelectionSwitchNode)
+            assert cp.method_label == "m"
+            assert "A" in cp.branches
+            assert "B" in cp.branches
+
+    def test_top_level_selection(self):
+        programs, _ = enumerate_client_programs(ss("+{OK: end, ERR: end}"), 2)
+        assert len(programs) == 2
+        for cp in programs:
+            assert isinstance(cp, TerminalNode)
+
+    def test_recursive_selection(self):
+        programs, _ = enumerate_client_programs(
+            ss("rec X . m . +{A: X, B: end}"), 2)
+        assert len(programs) >= 1
+        for cp in programs:
+            assert isinstance(cp, SelectionSwitchNode)
+
+    def test_max_paths_truncation(self):
+        programs, truncated = enumerate_client_programs(
+            ss("&{a: end, b: end, c: end, d: end}"), 2, max_paths=2)
+        assert len(programs) == 2
+        assert truncated
+
+    def test_file_handle_no_selection(self):
+        programs, _ = enumerate_client_programs(
+            ss("open . &{read: close . end, write: close . end}"), 2)
+        assert len(programs) == 2
+        for cp in programs:
+            assert isinstance(cp, MethodCallNode)
+            assert cp.label == "open"
+
+    def test_nested_selection(self):
+        programs, _ = enumerate_client_programs(
+            ss("m . +{A: n . +{X: end, Y: end}, B: end}"), 2)
+        assert len(programs) == 1
+        cp = programs[0]
+        assert isinstance(cp, SelectionSwitchNode)
+        assert cp.method_label == "m"
+        a_branch = cp.branches["A"]
+        assert isinstance(a_branch, SelectionSwitchNode)
+        assert a_branch.method_label == "n"
+
+    def test_recursive_max_revisits_zero(self):
+        programs, _ = enumerate_client_programs(
+            ss("rec X . m . +{A: X, B: end}"), 0)
+        assert len(programs) == 1
+        cp = programs[0]
+        assert isinstance(cp, SelectionSwitchNode)
+        # A branch should be Terminal (dead-end at max_revisits=0)
+        assert isinstance(cp.branches["A"], TerminalNode)
+        assert isinstance(cp.branches["B"], TerminalNode)
+
+    def test_name_suffix_method_call(self):
+        from reticulate.testgen import client_program_name_suffix
+        cp = MethodCallNode("a", MethodCallNode("b", TerminalNode()))
+        assert client_program_name_suffix(cp) == "a_b"
+
+    def test_name_suffix_selection_switch(self):
+        from reticulate.testgen import client_program_name_suffix
+        cp = SelectionSwitchNode("m", {"OK": TerminalNode(), "ERR": TerminalNode()})
+        assert client_program_name_suffix(cp) == "m"
+
+
+# =========================================================================
+# Generated source — switch statements
+# =========================================================================
+
+
+class TestGeneratedSwitchStatements:
+    def test_switch_variable_declaration(self):
+        out = gen("m . +{OK: end, ERR: end}")
+        assert "var mResult = obj.m();" in out
+
+    def test_switch_keyword(self):
+        out = gen("m . +{OK: end, ERR: end}")
+        assert "switch (mResult) {" in out
+
+    def test_switch_case_labels(self):
+        out = gen("m . +{OK: end, ERR: end}")
+        assert "case OK -> {" in out
+        assert "case ERR -> {" in out
+
+    def test_nested_switch_generation(self):
+        out = gen("m . +{A: n . +{X: end, Y: end}, B: end}")
+        assert "var mResult = obj.m();" in out
+        assert "var nResult = obj.n();" in out
+        assert "case A -> {" in out
+        assert "case X -> {" in out
+
+    def test_recursive_switch_variable_names(self):
+        out = gen("rec X . m . +{A: X, B: end}", TestGenConfig("Obj", max_revisits=1))
+        assert "var mResult = obj.m();" in out
+        assert "mResult2" in out
+
+    def test_switch_balanced_braces(self):
+        out = gen("m . +{A: n . +{X: end, Y: end}, B: end}")
+        assert out.count("{") == out.count("}")
+
+    def test_file_handle_no_switch(self):
+        out = gen("open . &{read: close . end, write: close . end}")
+        assert "switch" not in out
+        assert "obj.open();" in out
+
+    def test_valid_path_count_with_selection(self):
+        out = gen("m . +{OK: end, ERR: end}")
+        assert "Valid paths (1)" in out

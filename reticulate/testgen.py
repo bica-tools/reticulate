@@ -81,6 +81,34 @@ class TestGenConfig:
 
 
 # ---------------------------------------------------------------------------
+# Client program tree — selection-aware test structure
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MethodCallNode:
+    """A method call followed by the next program step."""
+    label: str
+    next: 'ClientProgram'
+
+
+@dataclass(frozen=True)
+class SelectionSwitchNode:
+    """A method call whose return value determines the branch via switch."""
+    method_label: str
+    branches: dict[str, 'ClientProgram']  # label → sub-program
+
+
+@dataclass(frozen=True)
+class TerminalNode:
+    """Protocol complete."""
+    pass
+
+
+ClientProgram = MethodCallNode | SelectionSwitchNode | TerminalNode
+
+
+# ---------------------------------------------------------------------------
 # Path enumeration
 # ---------------------------------------------------------------------------
 
@@ -203,6 +231,166 @@ def enumerate(ss: StateSpace, config: TestGenConfig) -> EnumerationResult:
 
 
 # ---------------------------------------------------------------------------
+# Client program enumeration — tree-shaped DFS with selection switches
+# ---------------------------------------------------------------------------
+
+
+def enumerate_client_programs(
+    ss: StateSpace, max_revisits: int = 2, max_paths: int = 100,
+) -> tuple[list[ClientProgram], bool]:
+    """Build tree-shaped client programs with selection switches.
+
+    At branch (&) states the client decides — separate programs.
+    At selection (+) states after a method — single SelectionSwitch node.
+    Uses zip matching across selection arms (not cartesian product).
+
+    Returns (programs, truncated).
+    """
+    visit_counts: dict[int, int] = {}
+    programs = _build_from_state(ss, ss.top, visit_counts, max_revisits)
+    truncated = len(programs) > max_paths
+    if truncated:
+        programs = programs[:max_paths]
+    return programs, truncated
+
+
+def _is_pure_selection_state(ss: StateSpace, state: int) -> bool:
+    """True if state has only SELECTION transitions."""
+    methods = list(ss.enabled_methods(state))
+    selections = ss.enabled_selections(state)
+    return not methods and bool(selections)
+
+
+def _build_from_state(
+    ss: StateSpace, state: int,
+    visit_counts: dict[int, int], max_revisits: int,
+) -> list[ClientProgram]:
+    """Recursively build all client programs from a state."""
+    if state == ss.bottom:
+        return [TerminalNode()]
+
+    count = visit_counts.get(state, 0)
+    if count > max_revisits:
+        return []
+
+    visit_counts[state] = count + 1
+
+    method_transitions = [
+        (label, target) for label, target in ss.enabled(state)
+        if not ss.is_selection(state, label, target)
+    ]
+    selection_transitions = [
+        (label, target) for label, target in ss.enabled(state)
+        if ss.is_selection(state, label, target)
+    ]
+
+    result: list[ClientProgram] = []
+
+    if method_transitions:
+        for label, target in method_transitions:
+            if _is_pure_selection_state(ss, target):
+                result.extend(_build_selection_switch(
+                    ss, label, target, visit_counts, max_revisits))
+            else:
+                subs = _build_from_state(ss, target, visit_counts, max_revisits)
+                for sub in subs:
+                    result.append(MethodCallNode(label, sub))
+    elif selection_transitions:
+        # Top-level selection — each branch is a separate program
+        for _label, target in selection_transitions:
+            result.extend(_build_from_state(ss, target, visit_counts, max_revisits))
+
+    visit_counts[state] = count  # restore
+    return result
+
+
+def _build_selection_switch(
+    ss: StateSpace, method: str, sel_state: int,
+    visit_counts: dict[int, int], max_revisits: int,
+) -> list[ClientProgram]:
+    """Build SelectionSwitch programs using zip matching."""
+    sel_transitions = [
+        (label, target) for label, target in ss.enabled(sel_state)
+        if ss.is_selection(sel_state, label, target)
+    ]
+
+    branch_programs: dict[str, list[ClientProgram]] = {}
+    for label, target in sel_transitions:
+        subs = _build_from_state(ss, target, visit_counts, max_revisits)
+        if not subs:
+            subs = [TerminalNode()]  # dead-end bounded by max_revisits
+        branch_programs[label] = subs
+
+    return _zip_selection_branches(method, branch_programs)
+
+
+def _zip_selection_branches(
+    method: str, branch_programs: dict[str, list[ClientProgram]],
+) -> list[ClientProgram]:
+    """Zip selection branch programs: max(|branch_i|) switches, cycling shorter lists."""
+    max_len = max((len(v) for v in branch_programs.values()), default=0)
+    if max_len == 0:
+        return []
+
+    keys = list(branch_programs.keys())
+    result: list[ClientProgram] = []
+    for i in range(max_len):
+        branches = {}
+        for key in keys:
+            lst = branch_programs[key]
+            branches[key] = lst[i % len(lst)]
+        result.append(SelectionSwitchNode(method, branches))
+    return result
+
+
+def client_program_name_suffix(cp: ClientProgram) -> str:
+    """Collect METHOD labels depth-first from a client program tree."""
+    labels: list[str] = []
+    _collect_method_labels(cp, labels)
+    return "_".join(labels)
+
+
+def _collect_method_labels(cp: ClientProgram, labels: list[str]) -> None:
+    if isinstance(cp, TerminalNode):
+        pass
+    elif isinstance(cp, MethodCallNode):
+        labels.append(cp.label)
+        _collect_method_labels(cp.next, labels)
+    elif isinstance(cp, SelectionSwitchNode):
+        labels.append(cp.method_label)
+        for branch in cp.branches.values():
+            _collect_method_labels(branch, labels)
+
+
+def _result_var_name(method_label: str, var_counts: dict[str, int]) -> str:
+    """Generate unique result variable name. First: mResult, then mResult2, etc."""
+    count = var_counts.get(method_label, 0) + 1
+    var_counts[method_label] = count
+    return f"{method_label}Result" if count == 1 else f"{method_label}Result{count}"
+
+
+def _append_client_program(
+    lines: list[str], cp: ClientProgram,
+    var_name: str, indent: str, var_counts: dict[str, int],
+) -> None:
+    """Recursively emit Java code for a client program tree."""
+    if isinstance(cp, TerminalNode):
+        pass
+    elif isinstance(cp, MethodCallNode):
+        lines.append(f"{indent}{var_name}.{cp.label}();")
+        _append_client_program(lines, cp.next, var_name, indent, var_counts)
+    elif isinstance(cp, SelectionSwitchNode):
+        result_var = _result_var_name(cp.method_label, var_counts)
+        lines.append(f"{indent}var {result_var} = {var_name}.{cp.method_label}();")
+        lines.append(f"{indent}switch ({result_var}) {{")
+        for label, branch in cp.branches.items():
+            lines.append(f"{indent}    case {label} -> {{")
+            _append_client_program(lines, branch, var_name, indent + "        ", var_counts)
+            lines.append(f"{indent}    }}")
+        lines.append(f"{indent}}}")
+
+
+# ---------------------------------------------------------------------------
 # Test source generation
 # ---------------------------------------------------------------------------
 
@@ -212,6 +400,8 @@ def generate_test_source(
 ) -> str:
     """Generate JUnit 5 test class source from a state space."""
     result = enumerate(ss, config)
+    programs, cp_truncated = enumerate_client_programs(
+        ss, config.max_revisits, config.max_paths)
     lines: list[str] = []
 
     # Package
@@ -231,24 +421,21 @@ def generate_test_source(
     lines.append(" */")
     lines.append(f"class {config.class_name}ProtocolTest {{")
 
-    # Valid paths
+    # Valid paths (client programs with switch statements)
     lines.append("")
-    lines.append(f"    // ===== Valid paths ({len(result.valid_paths)}) =====")
-    if result.truncated:
+    lines.append(f"    // ===== Valid paths ({len(programs)}) =====")
+    if cp_truncated:
         lines.append(f"")
         lines.append(f"    // WARNING: path enumeration truncated at {config.max_paths} paths")
-    for path in result.valid_paths:
-        labels = path.labels
-        suffix = "empty" if not labels else "_".join(labels)
+    for program in programs:
+        suffix = client_program_name_suffix(program)
+        suffix = suffix or "empty"
         lines.append("")
         lines.append("    @Test")
         lines.append(f"    void validPath_{suffix}() {{")
         lines.append(f"        {config.class_name} {config.var_name} = new {config.class_name}();")
-        for step in path.steps:
-            if step.kind == "selection":
-                lines.append(f"        // -> {step.label} (selected by object)")
-            else:
-                lines.append(f"        {config.var_name}.{step.label}();")
+        var_counts: dict[str, int] = {}
+        _append_client_program(lines, program, config.var_name, "        ", var_counts)
         lines.append("    }")
 
     # Violations

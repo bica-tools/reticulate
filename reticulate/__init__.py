@@ -38,7 +38,16 @@ from reticulate.termination import (
     check_wf_parallel,
     is_terminating,
 )
-from reticulate.testgen import TestGenConfig, enumerate, generate_test_source
+from reticulate.testgen import (
+    ClientProgram,
+    MethodCallNode,
+    SelectionSwitchNode,
+    TerminalNode,
+    TestGenConfig,
+    enumerate,
+    enumerate_client_programs,
+    generate_test_source,
+)
 from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
@@ -55,7 +64,12 @@ __all__ = [
     "SessionType",
     "StateSpace",
     "TerminationResult",
+    "ClientProgram",
+    "MethodCallNode",
+    "SelectionSwitchNode",
+    "TerminalNode",
     "TestGenConfig",
+    "enumerate_client_programs",
     "Var",
     "WFParallelResult",
     "build_statespace",
