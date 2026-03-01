@@ -209,7 +209,28 @@ class TestGenerate:
     def test_violations_section(self):
         out = gen("a . b . end")
         assert "Violations" in out
-        assert "@Disabled(" in out
+        assert "assertThrows(IllegalStateException.class" in out
+
+    def test_violation_uses_assert_throws(self):
+        """Clean violations (no selections in prefix) use assertThrows."""
+        out = gen("a . b . end")
+        assert "assertThrows(IllegalStateException.class, () -> obj." in out
+        # No @Disabled on clean violations
+        assert "@Disabled" not in out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
+
+    def test_selection_dependent_violation_stays_disabled(self):
+        """Violations with selection steps in prefix keep @Disabled."""
+        # a . +{OK: b . end, ERR: end}
+        # After [a, OK], b is enabled but not a → violation (a, OK, a)
+        # The prefix [a, OK] contains a selection step (OK), so @Disabled
+        out = gen("a . +{OK: b . end, ERR: end}")
+        if "Selection-dependent" in out:
+            assert '@Disabled("Selection-dependent: object may choose different branch")' in out
+
+    def test_assertions_import(self):
+        """Generated source includes static Assertions import."""
+        out = gen("a . end")
+        assert "import static org.junit.jupiter.api.Assertions.*;" in out
 
     def test_incomplete_section(self):
         out = gen("a . b . end")

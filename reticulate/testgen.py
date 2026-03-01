@@ -411,6 +411,7 @@ def generate_test_source(
     # Imports
     lines.append("import org.junit.jupiter.api.Test;")
     lines.append("import org.junit.jupiter.api.Disabled;")
+    lines.append("import static org.junit.jupiter.api.Assertions.*;")
     lines.append("")
 
     # Javadoc
@@ -449,12 +450,12 @@ def generate_test_source(
         enabled_str = "[" + ", ".join(enabled_sorted) + "]"
         suffix = (("initial_" + v.disabled_method) if not prefix_labels
                   else "_".join(prefix_labels) + "_" + v.disabled_method)
+        has_selection = any(s.kind == "selection" for s in v.prefix_path)
         lines.append("")
-        lines.append(
-            f'    @Disabled("Protocol violation: \'{v.disabled_method}\''
-            f' not enabled in {state_desc}'
-            f'; enabled: {enabled_str}")'
-        )
+        if has_selection:
+            lines.append(
+                '    @Disabled("Selection-dependent: object may choose different branch")'
+            )
         lines.append("    @Test")
         lines.append(f"    void violation_{suffix}() {{")
         lines.append(f"        {config.class_name} {config.var_name} = new {config.class_name}();")
@@ -463,7 +464,13 @@ def generate_test_source(
                 lines.append(f"        // -> {step.label} (selected by object)")
             else:
                 lines.append(f"        {config.var_name}.{step.label}();")
-        lines.append(f"        {config.var_name}.{v.disabled_method}(); // VIOLATION: not enabled here")
+        if has_selection:
+            lines.append(f"        {config.var_name}.{v.disabled_method}(); // VIOLATION: not enabled here")
+        else:
+            lines.append(
+                f"        assertThrows(IllegalStateException.class, "
+                f"() -> {config.var_name}.{v.disabled_method}());"
+            )
         lines.append("    }")
 
     # Incomplete
