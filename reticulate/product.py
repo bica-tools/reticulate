@@ -57,16 +57,23 @@ def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
 
     # Build transitions
     transitions: list[tuple[int, str, int]] = []
+    selection_transitions: set[tuple[int, str, int]] = set()
 
     for s1 in left.states:
         for s2 in right.states:
             src = pair_to_id[(s1, s2)]
             # Left-component transitions: (s1, s2) --[l]--> (s1', s2)
             for lbl, s1_tgt in left_adj[s1]:
-                transitions.append((src, lbl, pair_to_id[(s1_tgt, s2)]))
+                tr = (src, lbl, pair_to_id[(s1_tgt, s2)])
+                transitions.append(tr)
+                if left.is_selection(s1, lbl, s1_tgt):
+                    selection_transitions.add(tr)
             # Right-component transitions: (s1, s2) --[l]--> (s1, s2')
             for lbl, s2_tgt in right_adj[s2]:
-                transitions.append((src, lbl, pair_to_id[(s1, s2_tgt)]))
+                tr = (src, lbl, pair_to_id[(s1, s2_tgt)])
+                transitions.append(tr)
+                if right.is_selection(s2, lbl, s2_tgt):
+                    selection_transitions.add(tr)
 
     top = pair_to_id[(left.top, right.top)]
     bottom = pair_to_id[(left.bottom, right.bottom)]
@@ -77,4 +84,5 @@ def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
         top=top,
         bottom=bottom,
         labels=id_labels,
+        selection_transitions=selection_transitions,
     )

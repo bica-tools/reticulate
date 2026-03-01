@@ -34,6 +34,8 @@ class StateSpace:
     - ``top``: initial protocol state (⊤)
     - ``bottom``: terminal state (⊥ = end)
     - ``labels``: human-readable description for each state
+    - ``selection_transitions``: set of ``(source, label, target)`` triples
+      that are selection (internal choice) transitions
     """
 
     states: set[int] = field(default_factory=set)
@@ -41,6 +43,7 @@ class StateSpace:
     top: int = 0
     bottom: int = 0
     labels: dict[int, str] = field(default_factory=dict)
+    selection_transitions: set[tuple[int, str, int]] = field(default_factory=set)
 
     def enabled(self, state: int) -> list[tuple[str, int]]:
         """Return ``(label, target)`` pairs for transitions from *state*."""
@@ -62,6 +65,24 @@ class StateSpace:
             for t in self.successors(s):
                 stack.append(t)
         return visited
+
+    def is_selection(self, src: int, label: str, tgt: int) -> bool:
+        """Return True if the transition ``(src, label, tgt)`` is a selection."""
+        return (src, label, tgt) in self.selection_transitions
+
+    def enabled_methods(self, state: int) -> list[tuple[str, int]]:
+        """Return ``(label, target)`` pairs for METHOD transitions from *state*."""
+        return [
+            (l, t) for s, l, t in self.transitions
+            if s == state and (s, l, t) not in self.selection_transitions
+        ]
+
+    def enabled_selections(self, state: int) -> list[tuple[str, int]]:
+        """Return ``(label, target)`` pairs for SELECTION transitions from *state*."""
+        return [
+            (l, t) for s, l, t in self.transitions
+            if s == state and (s, l, t) in self.selection_transitions
+        ]
 
 
 def build_statespace(session_type: SessionType) -> StateSpace:
@@ -88,6 +109,7 @@ class _Builder:
         self._next_id: int = 0
         self._states: dict[int, str] = {}
         self._transitions: list[tuple[int, str, int]] = []
+        self._selection_transitions: set[tuple[int, str, int]] = set()
 
     def _fresh(self, label: str) -> int:
         sid = self._next_id
@@ -102,14 +124,19 @@ class _Builder:
         top_id = self._build(node, {}, end_id)
 
         reachable = self._reachable(top_id)
+        reachable_transitions = [
+            (s, l, t) for s, l, t in self._transitions if s in reachable
+        ]
+        reachable_selections = {
+            (s, l, t) for s, l, t in self._selection_transitions if s in reachable
+        }
         return StateSpace(
             states=reachable,
-            transitions=[
-                (s, l, t) for s, l, t in self._transitions if s in reachable
-            ],
+            transitions=reachable_transitions,
             top=top_id,
             bottom=end_id,
             labels={s: self._states[s] for s in reachable if s in self._states},
+            selection_transitions=reachable_selections,
         )
 
     # -- recursive construction ---------------------------------------------
@@ -146,7 +173,9 @@ class _Builder:
                 entry = self._fresh(label)
                 for lbl, body in choices:
                     target = self._build(body, env, end_id)
-                    self._transitions.append((entry, lbl, target))
+                    tr = (entry, lbl, target)
+                    self._transitions.append(tr)
+                    self._selection_transitions.add(tr)
                 return entry
 
             case Rec(var=var, body=body):
@@ -185,6 +214,14 @@ class _Builder:
             )
             for s, l, t in self._transitions
         ]
+        self._selection_transitions = {
+            (
+                new_id if s == old_id else s,
+                l,
+                new_id if t == old_id else t,
+            )
+            for s, l, t in self._selection_transitions
+        }
         if old_id in self._states:
             del self._states[old_id]
 
@@ -210,7 +247,10 @@ class _Builder:
                 remap[sid] = self._fresh(prod.labels.get(sid, "?"))
 
         for src, lbl, tgt in prod.transitions:
-            self._transitions.append((remap[src], lbl, remap[tgt]))
+            remapped = (remap[src], lbl, remap[tgt])
+            self._transitions.append(remapped)
+            if prod.is_selection(src, lbl, tgt):
+                self._selection_transitions.add(remapped)
 
         return remap[prod.top]
 

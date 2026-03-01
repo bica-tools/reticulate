@@ -410,8 +410,99 @@ class TestStateSpaceMethods:
 
 
 # ===================================================================
+# TransitionKind — selection vs method
+# ===================================================================
+
+
+class TestTransitionKind:
+    def test_select_produces_selection_transitions(self) -> None:
+        ss = build_statespace(parse("+{OK: end, ERR: end}"))
+        for s, l, t in ss.transitions:
+            assert ss.is_selection(s, l, t), f"({s}, {l}, {t}) should be selection"
+
+    def test_branch_produces_method_transitions(self) -> None:
+        ss = build_statespace(parse("&{m: end, n: end}"))
+        for s, l, t in ss.transitions:
+            assert not ss.is_selection(s, l, t), f"({s}, {l}, {t}) should be method"
+
+    def test_mixed_protocol_method_then_selection(self) -> None:
+        ss = build_statespace(parse("m . +{OK: end, ERR: end}"))
+        top_tr = [(l, t) for s, l, t in ss.transitions if s == ss.top]
+        assert len(top_tr) == 1
+        label, select_state = top_tr[0]
+        assert label == "m"
+        assert not ss.is_selection(ss.top, "m", select_state)
+
+        select_tr = [(l, t) for s, l, t in ss.transitions if s == select_state]
+        for l, t in select_tr:
+            assert ss.is_selection(select_state, l, t)
+
+    def test_enabled_methods_filters_selections(self) -> None:
+        ss = build_statespace(parse("m . +{OK: end, ERR: end}"))
+        methods = ss.enabled_methods(ss.top)
+        assert len(methods) == 1
+        assert methods[0][0] == "m"
+        assert ss.enabled_selections(ss.top) == []
+
+    def test_enabled_selections_filters_methods(self) -> None:
+        ss = build_statespace(parse("m . +{OK: end, ERR: end}"))
+        m_target = ss.enabled(ss.top)[0][1]
+        selections = ss.enabled_selections(m_target)
+        assert len(selections) == 2
+        labels = {l for l, _ in selections}
+        assert labels == {"OK", "ERR"}
+        assert ss.enabled_methods(m_target) == []
+
+    def test_product_preserves_selection_kind(self) -> None:
+        ss = build_statespace(parse("(m . end || +{OK: end, ERR: end})"))
+        has_method_m = any(
+            l == "m" and not ss.is_selection(s, l, t)
+            for s, l, t in ss.transitions
+        )
+        has_sel_ok = any(
+            l == "OK" and ss.is_selection(s, l, t)
+            for s, l, t in ss.transitions
+        )
+        has_sel_err = any(
+            l == "ERR" and ss.is_selection(s, l, t)
+            for s, l, t in ss.transitions
+        )
+        assert has_method_m, "m should be METHOD"
+        assert has_sel_ok, "OK should be SELECTION"
+        assert has_sel_err, "ERR should be SELECTION"
+
+    def test_recursion_preserves_selection_kind(self) -> None:
+        ss = build_statespace(parse("rec X . +{OK: &{m: X}, ERR: end}"))
+        has_sel_ok = any(
+            l == "OK" and ss.is_selection(s, l, t)
+            for s, l, t in ss.transitions
+        )
+        has_method_m = any(
+            l == "m" and not ss.is_selection(s, l, t)
+            for s, l, t in ss.transitions
+        )
+        assert has_sel_ok, "OK should be SELECTION after recursion"
+        assert has_method_m, "m should be METHOD after recursion"
+
+    def test_enabled_returns_all(self) -> None:
+        ss = build_statespace(parse("m . +{OK: end, ERR: end}"))
+        m_target = ss.enabled(ss.top)[0][1]
+        all_labels = {l for l, _ in ss.enabled(m_target)}
+        assert all_labels == {"OK", "ERR"}
+
+    def test_default_empty_selection_transitions(self) -> None:
+        ss = build_statespace(parse("a . end"))
+        assert ss.selection_transitions == set()
+
+    def test_is_selection_false_for_nonexistent(self) -> None:
+        ss = build_statespace(parse("a . end"))
+        assert not ss.is_selection(999, "x", 999)
+
+
+# ===================================================================
 # Error cases
 # ===================================================================
+
 
 class TestErrors:
     def test_unbound_variable(self) -> None:
