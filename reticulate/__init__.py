@@ -38,6 +38,7 @@ from reticulate.termination import (
     check_wf_parallel,
     is_terminating,
 )
+from reticulate.testgen import TestGenConfig, enumerate, generate_test_source
 from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
@@ -54,6 +55,7 @@ __all__ = [
     "SessionType",
     "StateSpace",
     "TerminationResult",
+    "TestGenConfig",
     "Var",
     "WFParallelResult",
     "build_statespace",
@@ -66,6 +68,7 @@ __all__ = [
     "dot_source",
     "find_embedding",
     "find_isomorphism",
+    "generate_test_source",
     "hasse_diagram",
     "is_galois_connection",
     "is_order_preserving",
