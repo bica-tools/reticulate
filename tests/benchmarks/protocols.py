@@ -1,6 +1,6 @@
 """Benchmark protocol definitions for the reticulate test suite.
 
-30 real-world and classic protocols expressed as session types, covering
+34 real-world and classic protocols expressed as session types, covering
 all constructors: branch (&), selection (+), parallel (||), recursion (rec),
 and sequencing (.).
 """
@@ -517,5 +517,78 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_transitions=8,
         expected_sccs=3,
         uses_parallel=False,
+    ),
+    # 31. Enzyme (Michaelis-Menten)
+    BenchmarkProtocol(
+        name="Enzyme (Michaelis-Menten)",
+        type_string=(
+            "rec X . &{bind_substrate: +{CATALYZE: release_product . X, "
+            "DISSOCIATE: X}, shutdown: end}"
+        ),
+        description=(
+            "Michaelis-Menten enzyme kinetics: enzyme binds substrate, then "
+            "either catalyzes (release product, loop) or substrate dissociates "
+            "(loop), or the enzyme is shut down."
+        ),
+        expected_states=4,
+        expected_transitions=5,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 32. Enzyme (Competitive Inhibition)
+    BenchmarkProtocol(
+        name="Enzyme (Competitive Inhibition)",
+        type_string=(
+            "rec X . &{bind_substrate: +{CATALYZE: release_product . X, "
+            "DISSOCIATE: X}, bind_inhibitor: &{release_inhibitor: X}, "
+            "shutdown: end}"
+        ),
+        description=(
+            "Enzyme with competitive inhibition: enzyme can bind substrate "
+            "(catalyze or dissociate) or bind inhibitor (must release before "
+            "resuming), or shut down."
+        ),
+        expected_states=5,
+        expected_transitions=7,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 33. Ion Channel (Single)
+    BenchmarkProtocol(
+        name="Ion Channel (Single)",
+        type_string=(
+            "rec X . &{depolarize: +{OPEN: conduct_ions . +{INACTIVATE: "
+            "&{repolarize: X, permanent_inactivation: end}, CLOSE_DIRECT: X}, "
+            "SUBTHRESHOLD: X}, shutdown: end}"
+        ),
+        description=(
+            "Voltage-gated ion channel: depolarize may open (conduct ions, "
+            "then inactivate or close directly) or be subthreshold (loop). "
+            "Inactivated channels can repolarize (recover) or permanently "
+            "inactivate."
+        ),
+        expected_states=6,
+        expected_transitions=9,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 34. Ion Channel (Na+/K+ Parallel)
+    BenchmarkProtocol(
+        name="Ion Channel (Na+/K+ Parallel)",
+        type_string=(
+            "rec X . &{depolarize: (conduct_Na . +{INACTIVATE_Na: end, "
+            "CLOSE_Na: end} || conduct_K . delayed_close_K . end) . "
+            "&{repolarize: X, permanent_inactivation: end}, shutdown: end}"
+        ),
+        description=(
+            "Parallel Na+/K+ ion channels during action potential: "
+            "depolarization opens both channels concurrently — Na+ fast "
+            "activation with inactivation, K+ delayed rectifier — then "
+            "repolarize (recover) or permanently inactivate."
+        ),
+        expected_states=11,
+        expected_transitions=19,
+        expected_sccs=2,
+        uses_parallel=True,
     ),
 ]
