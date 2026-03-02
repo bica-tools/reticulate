@@ -218,14 +218,15 @@ class TestGenerate:
         # No @Disabled on clean violations
         assert "@Disabled" not in out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
 
-    def test_selection_dependent_violation_stays_disabled(self):
-        """Violations with selection steps in prefix keep @Disabled."""
-        # a . +{OK: b . end, ERR: end}
-        # After [a, OK], b is enabled but not a → violation (a, OK, a)
-        # The prefix [a, OK] contains a selection step (OK), so @Disabled
+    def test_selection_dependent_violation_uses_assert_throws(self):
+        """Violations with selection steps in prefix also use assertThrows."""
         out = gen("a . +{OK: b . end, ERR: end}")
-        if "Selection-dependent" in out:
-            assert '@Disabled("Selection-dependent: object may choose different branch")' in out
+        # No @Disabled on any violation
+        violations_section = out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
+        assert "@Disabled" not in violations_section
+        # Selection steps are comments, violation uses assertThrows
+        if "violation_" in violations_section:
+            assert "assertThrows(IllegalStateException.class" in violations_section
 
     def test_assertions_import(self):
         """Generated source includes static Assertions import."""
