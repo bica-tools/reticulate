@@ -75,78 +75,72 @@ Show help message and exit.
 .SH GRAMMAR
 The session type grammar accepted by
 .B reticulate
-is:
+is a core grammar with 9 constructs and no desugaring:
 .PP
 .RS 4
 .nf
 S  ::=  &{ m1 : S1 , ... , mn : Sn }    branch (external choice)
      |  +{ l1 : S1 , ... , ln : Sn }    selection (internal choice)
-     |  S1 || S2                         parallel
-     |  S1 . S2                          sequencing
+     |  S1 || S2                         parallel composition
+     |  S1 . S2                          continuation (after parallel)
      |  rec X . S                        recursion
      |  ( S )                            grouping
      |  X                                type variable
-     |  end                              terminated
+     |  end                              session terminated
+     |  wait                             parallel branch completed
 .fi
 .RE
+.PP
+Every construct has exactly one meaning.  There are no desugaring rules.
 .
 .SS Precedence
 .B .
-(sequencing) binds tighter than
+(continuation) binds tighter than
 .B ||
 (parallel).  Use parentheses to override:
 .PP
 .RS 4
 .nf
-a . b . end || c . end      parses as    (a . b . end) || (c . end)
-(a . end || b . end) . c    forces       Sequence(Parallel(...), ...)
+&{a: end} || &{b: end}       parses as   &{a: end} || &{b: end}
+(&{a: wait} || &{b: wait}) . &{c: end}   continuation after parallel
 .fi
 .RE
+.PP
+The body of
+.B rec X . S
+is parsed at atom level (self-delimiting constructs only), so
+.B rec X . &{...}
+works as expected.
 .
-.SS Desugaring
-When the left operand of
-.B .
-is a bare identifier (a method name), the parser desugars it into a
-single-method
-.BR Branch :
+.SS end vs wait
+.B end
+signals final session termination.  Nothing may follow it.
+.PP
+.B wait
+signals that a parallel branch has completed and is ready to synchronise.
+It is used inside parallel branches that are followed by a continuation:
 .PP
 .RS 4
 .nf
-a . S     \(->     &{ a : S }
-a . b . end     \(->     &{ a : &{ b : end } }
+(&{read: wait} || &{write: wait}) . &{close: end}
 .fi
 .RE
 .PP
-This means method sequencing
-.I is
-branch with one arm.
+After both branches reach
+.BR wait ,
+the continuation
+.B &{close: end}
+executes.
 .
-.SS Why Sequence exists
-Given the desugaring above,
-.B Sequence
-might appear redundant.  It is not.  The desugaring only applies when the
-left operand is a bare identifier.  When a
-.I compound
-expression appears on the left of
-.BR . ,
-there is no method name to form a Branch from, so the parser produces a
-.B Sequence
-node instead.
-.PP
-The canonical case is a parallel block followed by a continuation:
-.PP
-.RS 4
-(read . end || write . end) . close . end
-.RE
-.PP
-Here the parallel fork-join must complete before
-.B close
-can be called.  The left side is a full
+.SS Continuation
+The
+.B .
+operator chains a continuation after a parallel composition.
+The left operand is typically a
 .B Parallel
-sub-expression with no single method name, so
-.B Sequence(Parallel(...), Branch(("close", End())))
-is the only faithful representation.  7 of the 34 benchmark protocols rely
-on this pattern.
+node (possibly parenthesised).  This is the only construct that requires
+shared post-synchronisation.  7 of the 34 benchmark protocols use this
+pattern.
 .
 .SS Unicode support
 The parser accepts Unicode alternatives for common operators:
@@ -189,6 +183,11 @@ This is the key novelty that makes lattice structure
 .I necessary
 rather than merely nice.
 .TP
+.B S1 . S2
+.I Continuation
+after parallel.  Chains a post-synchronisation protocol after a
+parallel block completes.
+.TP
 .B rec X . S
 .I Recursion.
 Binds variable
@@ -200,7 +199,12 @@ strongly connected components.
 .TP
 .B end
 .I Terminated
-session.  No further method calls are permitted.
+session.  No further method calls are permitted.  Final.
+.TP
+.B wait
+.I Synchronisation point.
+A parallel branch has completed.  Used inside parallel branches
+followed by a continuation.
 .
 .SH EXIT STATUS
 .TP
@@ -227,15 +231,23 @@ Lattice check: \[u2713] IS a lattice
 .fi
 .RE
 .PP
-Parallel composition (no parentheses required):
+Parallel composition:
 .PP
 .RS 4
 .nf
-$ reticulate 'read . end || write . end'
-Session type: read . end || write . end
+$ reticulate '&{read: end} || &{write: end}'
+Session type: &{read: end} || &{write: end}
 States: 4  |  Transitions: 4  |  SCCs: 4
 
 Lattice check: \[u2713] IS a lattice
+.fi
+.RE
+.PP
+Parallel with continuation (using wait):
+.PP
+.RS 4
+.nf
+$ reticulate '(&{read: wait} || &{write: wait}) . &{close: end}'
 .fi
 .RE
 .PP
