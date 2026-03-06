@@ -1,18 +1,49 @@
 """Session type parser: AST nodes, tokenizer, recursive-descent parser, pretty-printer.
 
-Grammar:
+Grammar
+-------
+
+::
+
     S  ::=  &{ m₁ : S₁ , … , mₙ : Sₙ }    -- branch (external choice)
          |  +{ l₁ : S₁ , … , lₙ : Sₙ }    -- selection (internal choice)
-         |  S₁ || S₂                        -- parallel (infix)
-         |  ( S )                            -- grouping
-         |  rec X . S                        -- recursion
-         |  X                                -- variable
-         |  end                              -- terminated
+         |  S₁ || S₂                        -- parallel
          |  S₁ . S₂                          -- sequencing
+         |  rec X . S                        -- recursion
+         |  ( S )                            -- grouping
+         |  X                                -- type variable
+         |  end                              -- terminated
 
-Precedence: ``.`` binds tighter than ``||``.
+Precedence (tightest first): ``.`` > ``||``.
 
-Desugaring: `ident . S` → `Branch(((ident, S),)))`
+Desugaring
+~~~~~~~~~~
+When the left-hand side of ``.`` is a bare identifier, the parser desugars
+it into a single-method ``Branch``::
+
+    ident . S   →   Branch(((ident, S),))
+
+This means ``a . b . end`` is equivalent to ``&{a: &{b: end}}``: plain
+method sequencing *is* branch with one arm.
+
+Why ``Sequence`` exists
+~~~~~~~~~~~~~~~~~~~~~~~
+Given the desugaring above, one might ask whether ``Sequence`` is redundant.
+It is not.  The desugaring only applies when the left operand is a bare
+identifier (a method name).  When a *compound* expression appears on the
+left of ``.``, there is no method name to form a ``Branch`` from, so the
+parser produces a ``Sequence`` node instead.
+
+The canonical case is a parallel block followed by a continuation::
+
+    (read . end || write . end) . close . end
+
+Here the parallel fork-join must complete before ``close`` can be called.
+There is no single method name for the left side — it is a full ``Parallel``
+sub-expression — so ``Sequence(Parallel(…), Branch(("close", End())))`` is
+the only faithful representation.  7 of the 34 benchmark protocols rely on
+this pattern (File Channel, Reticulate Pipeline, GitHub CI Workflow,
+MQTT Client, Saga Orchestrator, Leader Replication, Ion Channel Na+/K+).
 """
 
 from __future__ import annotations
@@ -51,7 +82,7 @@ class Select:
 
 @dataclass(frozen=True)
 class Parallel:
-    """Parallel composition ``( S₁ || S₂ )``."""
+    """Parallel composition ``S₁ || S₂``."""
     left: "SessionType"
     right: "SessionType"
 
@@ -65,10 +96,13 @@ class Rec:
 
 @dataclass(frozen=True)
 class Sequence:
-    """General sequential composition ``S₁ . S₂``.
+    """Sequential composition ``S₁ . S₂`` for compound left-hand sides.
 
-    Only used when the left-hand side is *not* a bare identifier
-    (bare identifiers desugar to single-method ``Branch``).
+    When the left operand of ``.`` is a bare identifier, the parser desugars
+    it to a single-method ``Branch`` (so ``a . S`` becomes ``&{a: S}``).
+    ``Sequence`` is produced only when the left operand is a compound
+    expression with no method name to branch on — typically a ``Parallel``
+    block followed by a continuation, e.g. ``(S₁ || S₂) . close . end``.
     """
     left: "SessionType"
     right: "SessionType"
