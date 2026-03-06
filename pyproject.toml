@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reticulate"
+version = "0.1.0"
+description = "Session types as algebraic reticulates — lattice checker and toolchain"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Alexandre Zua Caldeira" },
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+viz = ["graphviz"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+reticulate = "reticulate.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["reticulate*"]

@@ -3,12 +3,15 @@
 Grammar:
     S  ::=  &{ m₁ : S₁ , … , mₙ : Sₙ }    -- branch (external choice)
          |  +{ l₁ : S₁ , … , lₙ : Sₙ }    -- selection (internal choice)
+         |  S₁ || S₂                        -- parallel (infix)
          |  ( S₁ || S₂ )                    -- parallel (paren notation)
          |  ||{ S₁ , S₂ }                   -- parallel (brace notation)
          |  rec X . S                        -- recursion
          |  X                                -- variable
          |  end                              -- terminated
          |  S₁ . S₂                          -- sequencing
+
+Precedence: ``.`` binds tighter than ``||``.
 
 Desugaring: `ident . S` → `Branch(((ident, S),)))`
 """
@@ -222,17 +225,34 @@ class _Parser:
         return result
 
     def _seq_expr(self) -> SessionType:
-        """Parse a sequence expression (right-associative ``.`` operator).
+        """Parse a sequence expression (right-associative ``.`` and ``||`` operators).
 
         If the left operand is a bare identifier we desugar ``ident . S``
         to ``Branch(((ident, S),))``.  Otherwise we produce a ``Sequence``
         node.
+
+        ``||`` binds looser than ``.`` — ``a.b || c.d`` means ``(a.b) || (c.d)``.
+        """
+        left = self._dot_expr()
+
+        # Infix || (parallel) — no parentheses required
+        if self._peek().kind is TokenKind.PAR:
+            self._advance()  # consume '||'
+            right = self._seq_expr()  # right-associative
+            return Parallel(left, right)
+
+        return left
+
+    def _dot_expr(self) -> SessionType:
+        """Parse dot-sequencing (right-associative ``.`` operator).
+
+        Binds tighter than ``||``.
         """
         left = self._atom()
 
         if self._peek().kind is TokenKind.DOT:
             self._advance()  # consume '.'
-            right = self._seq_expr()  # right-associative
+            right = self._dot_expr()  # right-associative
 
             # Desugaring: bare identifier becomes single-method Branch
             if isinstance(left, Var):
@@ -314,17 +334,10 @@ class _Parser:
     def _paren_or_parallel(self) -> SessionType:
         """Parse ``( S₁ || S₂ )`` or ``( S )``."""
         self._advance()  # consume '('
-        left = self._seq_expr()
-
-        if self._peek().kind is TokenKind.PAR:
-            self._advance()  # consume '||'
-            right = self._seq_expr()
-            self._expect(TokenKind.RPAREN, "parallel closing")
-            return Parallel(left, right)
-
-        # Plain grouping
+        # Use _seq_expr so nested infix || works inside parens
+        inner = self._seq_expr()
         self._expect(TokenKind.RPAREN, "parenthesized expression closing")
-        return left
+        return inner
 
     def _brace_parallel(self) -> Parallel:
         """Parse ``||{ S₁ , S₂ }`` — alternative parallel notation."""
@@ -345,7 +358,7 @@ class _Parser:
                 var_tok.pos,
             )
         self._expect(TokenKind.DOT, "recursion dot")
-        body = self._seq_expr()
+        body = self._dot_expr()
         return Rec(var_tok.value, body)
 
 
@@ -373,6 +386,18 @@ def pretty(node: SessionType) -> str:
     """Render an AST back to a human-readable session-type string.
 
     Single-element ``Branch`` is printed as sequencing sugar (``m . S``).
+    Parentheses are added around ``||`` only when needed for correct
+    precedence (inside ``.`` or ``rec``).
+    """
+    return _pretty(node, in_tight=False)
+
+
+def _pretty(node: SessionType, *, in_tight: bool) -> str:
+    """Internal pretty-printer.
+
+    *in_tight* is ``True`` when we are inside a context that binds tighter
+    than ``||`` (i.e. inside ``.`` sequencing or ``rec`` body).  In that
+    case a ``Parallel`` node needs parentheses to roundtrip correctly.
     """
     match node:
         case End():
@@ -381,22 +406,25 @@ def pretty(node: SessionType) -> str:
             return name
         case Branch(choices=choices) if len(choices) == 1:
             label, body = choices[0]
-            return f"{label} . {pretty(body)}"
+            return f"{label} . {_pretty(body, in_tight=True)}"
         case Branch(choices=choices):
             inner = ", ".join(
-                f"{label}: {pretty(body)}" for label, body in choices
+                f"{label}: {_pretty(body, in_tight=False)}"
+                for label, body in choices
             )
             return f"&{{{inner}}}"
         case Select(choices=choices):
             inner = ", ".join(
-                f"{label}: {pretty(body)}" for label, body in choices
+                f"{label}: {_pretty(body, in_tight=False)}"
+                for label, body in choices
             )
             return f"+{{{inner}}}"
         case Parallel(left=left, right=right):
-            return f"({pretty(left)} || {pretty(right)})"
+            s = f"{_pretty(left, in_tight=False)} || {_pretty(right, in_tight=False)}"
+            return f"({s})" if in_tight else s
         case Rec(var=var, body=body):
-            return f"rec {var} . {pretty(body)}"
+            return f"rec {var} . {_pretty(body, in_tight=True)}"
         case Sequence(left=left, right=right):
-            return f"{pretty(left)} . {pretty(right)}"
+            return f"{_pretty(left, in_tight=True)} . {_pretty(right, in_tight=True)}"
         case _:
             raise TypeError(f"unknown AST node: {type(node).__name__}")

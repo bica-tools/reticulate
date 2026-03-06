@@ -359,7 +359,7 @@ class TestPrettyPrinter:
 
     def test_parallel(self) -> None:
         node = Parallel(End(), Var("X"))
-        assert pretty(node) == "(end || X)"
+        assert pretty(node) == "end || X"
 
     def test_rec(self) -> None:
         node = Rec("X", Var("X"))
