@@ -290,16 +290,6 @@ class TestParallelRecursive:
         assert self.ss.bottom in self.ss.reachable_from(self.ss.top)
 
 
-class TestParallelBraceNotation:
-    """Brace notation ``||{...}`` produces the same result as paren notation."""
-
-    def test_equivalent_state_counts(self) -> None:
-        paren = build_statespace(parse("(a . end || b . end)"))
-        brace = build_statespace(parse("||{a . end, b . end}"))
-        assert len(paren.states) == len(brace.states)
-        assert len(paren.transitions) == len(brace.transitions)
-
-
 class TestParallelWithSequence:
     """``(a . end || b . end) . close . end`` — parallel then sequential."""
 

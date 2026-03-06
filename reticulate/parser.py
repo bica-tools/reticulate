@@ -4,7 +4,6 @@ Grammar:
     S  ::=  &{ m₁ : S₁ , … , mₙ : Sₙ }    -- branch (external choice)
          |  +{ l₁ : S₁ , … , lₙ : Sₙ }    -- selection (internal choice)
          |  S₁ || S₂                        -- parallel (infix)
-         |  ||{ S₁ , S₂ }                   -- parallel (brace notation)
          |  ( S )                            -- grouping
          |  rec X . S                        -- recursion
          |  X                                -- variable
@@ -273,13 +272,9 @@ class _Parser:
         if tok.kind is TokenKind.PLUS:
             return self._select()
 
-        # ( ... )  — either parenthesized expression or parallel
+        # ( ... )  — grouping
         if tok.kind is TokenKind.LPAREN:
             return self._paren()
-
-        # ||{ S₁ , S₂ } — alternative parallel notation
-        if tok.kind is TokenKind.PAR:
-            return self._brace_parallel()
 
         # rec X . S
         if tok.kind is TokenKind.IDENT and tok.value == "rec":
@@ -337,16 +332,6 @@ class _Parser:
         inner = self._seq_expr()
         self._expect(TokenKind.RPAREN, "closing ')'")
         return inner
-
-    def _brace_parallel(self) -> Parallel:
-        """Parse ``||{ S₁ , S₂ }`` — alternative parallel notation."""
-        self._advance()  # consume '||'
-        self._expect(TokenKind.LBRACE, "parallel brace notation")
-        left = self._seq_expr()
-        self._expect(TokenKind.COMMA, "parallel separator (expected ',')")
-        right = self._seq_expr()
-        self._expect(TokenKind.RBRACE, "parallel brace closing")
-        return Parallel(left, right)
 
     def _rec(self) -> Rec:
         self._advance()  # consume 'rec'

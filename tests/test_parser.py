@@ -133,23 +133,13 @@ class TestParserBasic:
         result = parse("(end || end)")
         assert result == Parallel(End(), End())
 
-    def test_parallel_brace_notation(self) -> None:
-        result = parse("||{end, end}")
-        assert result == Parallel(End(), End())
-
-    def test_parallel_brace_with_complex_branches(self) -> None:
-        result = parse("||{a . end, b . end}")
+    def test_parallel_bare_infix(self) -> None:
+        result = parse("a . end || b . end")
         expected = Parallel(
             Branch((("a", End()),)),
             Branch((("b", End()),)),
         )
         assert result == expected
-
-    def test_parallel_brace_equivalent_to_paren(self) -> None:
-        """Both parallel notations produce the same AST."""
-        paren = parse("(read . end || write . end)")
-        brace = parse("||{read . end, write . end}")
-        assert paren == brace
 
     def test_rec(self) -> None:
         result = parse("rec X . end")
