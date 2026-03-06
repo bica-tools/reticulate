@@ -4,8 +4,8 @@ Grammar:
     S  ::=  &{ m₁ : S₁ , … , mₙ : Sₙ }    -- branch (external choice)
          |  +{ l₁ : S₁ , … , lₙ : Sₙ }    -- selection (internal choice)
          |  S₁ || S₂                        -- parallel (infix)
-         |  ( S₁ || S₂ )                    -- parallel (paren notation)
          |  ||{ S₁ , S₂ }                   -- parallel (brace notation)
+         |  ( S )                            -- grouping
          |  rec X . S                        -- recursion
          |  X                                -- variable
          |  end                              -- terminated
@@ -275,7 +275,7 @@ class _Parser:
 
         # ( ... )  — either parenthesized expression or parallel
         if tok.kind is TokenKind.LPAREN:
-            return self._paren_or_parallel()
+            return self._paren()
 
         # ||{ S₁ , S₂ } — alternative parallel notation
         if tok.kind is TokenKind.PAR:
@@ -331,12 +331,11 @@ class _Parser:
         self._expect(TokenKind.RBRACE, "select closing")
         return Select(choices)
 
-    def _paren_or_parallel(self) -> SessionType:
-        """Parse ``( S₁ || S₂ )`` or ``( S )``."""
+    def _paren(self) -> SessionType:
+        """Parse a parenthesized expression ``( S )``."""
         self._advance()  # consume '('
-        # Use _seq_expr so nested infix || works inside parens
         inner = self._seq_expr()
-        self._expect(TokenKind.RPAREN, "parenthesized expression closing")
+        self._expect(TokenKind.RPAREN, "closing ')'")
         return inner
 
     def _brace_parallel(self) -> Parallel:
