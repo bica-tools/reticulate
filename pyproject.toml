@@ -24,3 +24,6 @@ reticulate = "reticulate.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["reticulate*"]
+
+[tool.setuptools.data-files]
+"share/man/man1" = ["man/reticulate.1"]
