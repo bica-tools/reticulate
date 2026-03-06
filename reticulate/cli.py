@@ -12,9 +12,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from reticulate.lattice import check_lattice
+from reticulate.lattice import check_lattice, compute_meet, compute_join
 from reticulate.parser import ParseError, parse, pretty
-from reticulate.statespace import build_statespace
+from reticulate.statespace import StateSpace, build_statespace
 from reticulate.visualize import dot_source, render_hasse
 
 
@@ -62,6 +62,11 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Title for the Hasse diagram",
     )
+    parser.add_argument(
+        "--lattice",
+        action="store_true",
+        help="Pretty-print the lattice: states, transitions, meet/join tables",
+    )
 
     args = parser.parse_args(argv)
 
@@ -83,6 +88,10 @@ def main(argv: list[str] | None = None) -> None:
     result = check_lattice(ss)
 
     # Dispatch output mode
+    if args.lattice:
+        _print_lattice(ast, ss, result)
+        return
+
     if args.dot:
         print(dot_source(
             ss,
@@ -157,6 +166,90 @@ def _print_summary(
         a, b, kind = result.counterexample
         kind_str = "no meet" if kind == "no_meet" else "no join"
         print(f"  Counterexample: states {a} and {b} have {kind_str}")
+
+
+def _print_lattice(
+    ast: object,
+    ss: StateSpace,
+    result: object,
+) -> None:
+    """Pretty-print the lattice: states, transitions, and meet/join tables."""
+    from reticulate.lattice import LatticeResult
+
+    assert isinstance(result, LatticeResult)
+
+    print(f"Session type: {pretty(ast)}")
+    print()
+
+    # States sorted by ID, top first, bottom last
+    states_sorted = sorted(ss.states)
+
+    # --- States ---
+    print(f"States ({len(states_sorted)}):")
+    for s in states_sorted:
+        label = ss.labels.get(s, "?")
+        markers = []
+        if s == ss.top:
+            markers.append("\u22a4")
+        if s == ss.bottom:
+            markers.append("\u22a5")
+        marker_str = f" ({', '.join(markers)})" if markers else ""
+        print(f"  {s}: {label}{marker_str}")
+
+    print()
+
+    # --- Transitions ---
+    print(f"Transitions ({len(ss.transitions)}):")
+    for src, lbl, tgt in sorted(ss.transitions):
+        kind = " [select]" if ss.is_selection(src, lbl, tgt) else ""
+        print(f"  {src} \u2014{lbl}\u2192 {tgt}{kind}")
+
+    print()
+
+    # --- Lattice verdict ---
+    check = "\u2713" if result.is_lattice else "\u2717"
+    verdict = "IS a lattice" if result.is_lattice else "NOT a lattice"
+    print(f"Lattice: {check} {verdict}")
+
+    if not result.is_lattice:
+        if result.counterexample is not None:
+            a, b, kind = result.counterexample
+            kind_str = "no meet" if kind == "no_meet" else "no join"
+            print(f"  Counterexample: states {a} and {b} have {kind_str}")
+        print()
+        return
+
+    print()
+
+    # --- Meet table ---
+    # Use SCC representatives for display
+    reps = sorted({result.scc_map[s] for s in ss.states})
+    col_width = max(len(str(s)) for s in reps) + 1
+
+    print(f"Meet table (\u2293):")
+    header = " " * (col_width + 1) + "".join(str(s).rjust(col_width) for s in reps)
+    print(header)
+    for a in reps:
+        row = str(a).rjust(col_width) + " "
+        for b in reps:
+            m = compute_meet(ss, a, b)
+            cell = str(m) if m is not None else "-"
+            row += cell.rjust(col_width)
+        print(row)
+
+    print()
+
+    # --- Join table ---
+    print(f"Join table (\u2294):")
+    header = " " * (col_width + 1) + "".join(str(s).rjust(col_width) for s in reps)
+    print(header)
+    for a in reps:
+        row = str(a).rjust(col_width) + " "
+        for b in reps:
+            j = compute_join(ss, a, b)
+            cell = str(j) if j is not None else "-"
+            row += cell.rjust(col_width)
+        print(row)
 
 
 if __name__ == "__main__":
