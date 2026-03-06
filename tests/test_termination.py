@@ -4,12 +4,14 @@ import pytest
 
 from reticulate.parser import (
     Branch,
+    Continuation,
     End,
     Parallel,
     Rec,
     Select,
     Sequence,
     Var,
+    Wait,
     parse,
 )
 from reticulate.termination import (
@@ -50,7 +52,7 @@ class TestTerminatingSimple:
         assert is_terminating(parse("end")) is True
 
     def test_sequence(self) -> None:
-        assert is_terminating(parse("a . b . end")) is True
+        assert is_terminating(parse("&{a: &{b: end}}")) is True
 
     def test_branch(self) -> None:
         assert is_terminating(parse("&{m: end}")) is True
@@ -59,7 +61,7 @@ class TestTerminatingSimple:
         assert is_terminating(parse("+{OK: end, ERR: end}")) is True
 
     def test_parallel_simple(self) -> None:
-        assert is_terminating(parse("(a . end || b . end)")) is True
+        assert is_terminating(parse("(&{a: end} || &{b: end})")) is True
 
     def test_branch_multiple(self) -> None:
         assert is_terminating(parse("&{a: end, b: end, c: end}")) is True
@@ -76,13 +78,13 @@ class TestTerminatingRecursion:
     """Recursive types that have at least one exit path."""
 
     def test_rec_with_exit(self) -> None:
-        """rec X . &{read: X, done: end} — done→End is the exit."""
+        """rec X . &{read: X, done: end} — done->End is the exit."""
         r = _term("rec X . &{read: X, done: end}")
         assert r.is_terminating is True
         assert r.non_terminating_vars == ()
 
     def test_rec_select_exit(self) -> None:
-        """rec X . +{OK: X, DONE: end} — DONE→End is the exit."""
+        """rec X . +{OK: X, DONE: end} — DONE->End is the exit."""
         assert is_terminating(parse("rec X . +{OK: X, DONE: end}")) is True
 
     def test_nested_rec_both_terminating(self) -> None:
@@ -92,14 +94,14 @@ class TestTerminatingRecursion:
         assert r.is_terminating is True
 
     def test_rec_with_parallel_exit(self) -> None:
-        """rec X . &{go: (a . end || b . end), loop: X}"""
+        """rec X . &{go: (&{a: end} || &{b: end}), loop: X}"""
         assert is_terminating(
-            parse("rec X . &{go: (a . end || b . end), loop: X}")
+            parse("rec X . &{go: (&{a: end} || &{b: end}), loop: X}")
         ) is True
 
     def test_rec_sequence_exit(self) -> None:
-        """rec X . &{step: X, done: a . b . end}"""
-        assert is_terminating(parse("rec X . &{step: X, done: a . b . end}")) is True
+        """rec X . &{step: X, done: &{a: &{b: end}}}"""
+        assert is_terminating(parse("rec X . &{step: X, done: &{a: &{b: end}}}")) is True
 
     def test_java_iterator(self) -> None:
         """Classic benchmark: rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}"""
@@ -108,9 +110,9 @@ class TestTerminatingRecursion:
         ) is True
 
     def test_file_object(self) -> None:
-        """open . rec X . &{read: +{data: X, eof: close . end}}"""
+        """&{open: rec X . &{read: +{data: X, eof: &{close: end}}}}"""
         assert is_terminating(
-            parse("open . rec X . &{read: +{data: X, eof: close . end}}")
+            parse("&{open: rec X . &{read: +{data: X, eof: &{close: end}}}}")
         ) is True
 
 
@@ -149,12 +151,12 @@ class TestNonTerminating:
         assert r.is_terminating is False
 
     def test_sequence_left_loops(self) -> None:
-        """Sequence(Var(X), End) — left=Var(X) fails, AND → False.
+        """Continuation(Var(X), End) — left=Var(X) fails, AND -> False.
 
-        Note: we build the AST directly because the parser desugars
-        ``X . end`` into ``Branch(("X", End()))`` (method call sugar).
+        Note: we build the AST directly because the parser no longer
+        supports sequencing sugar ``X . end``.
         """
-        node = Rec("X", Sequence(Var("X"), End()))
+        node = Rec("X", Continuation(Var("X"), End()))
         r = check_termination(node)
         assert r.is_terminating is False
         assert "X" in r.non_terminating_vars
@@ -184,7 +186,7 @@ class TestTerminationResult:
         # X has exit? &{a: rec Y . Y, b: X} — 'a' branch: rec Y.Y,
         # _has_exit_path for X in rec Y.Y checks body Y, which is Var(Y),
         # name != forbidden(X), so returns True. So X IS terminating.
-        # But Y has only Y in body → non-terminating.
+        # But Y has only Y in body -> non-terminating.
         assert "Y" in r.non_terminating_vars
         assert r.is_terminating is False
 
@@ -207,11 +209,11 @@ class TestTerminationResult:
 # ===================================================================
 
 class TestWFParallel:
-    """WF-Par checks: termination, cross-branch vars, nested ∥."""
+    """WF-Par checks: termination, cross-branch vars, nested parallel."""
 
     def test_simple_ok(self) -> None:
-        """(a . end || b . end) — well-formed."""
-        r = _wf("(a . end || b . end)")
+        """(&{a: end} || &{b: end}) — well-formed."""
+        r = _wf("(&{a: end} || &{b: end})")
         assert r.is_well_formed is True
         assert r.errors == ()
 
@@ -235,7 +237,7 @@ class TestWFParallel:
         assert any("non-terminating" in e for e in r.errors)
 
     def test_cross_branch_vars(self) -> None:
-        """Free in left, bound in right → violation."""
+        """Free in left, bound in right -> violation."""
         # rec X . (X || rec X . X) — X is free in left, bound in right
         # But this is contrived. Let's build the AST directly.
         node = Parallel(Var("X"), Rec("X", Var("X")))
@@ -244,19 +246,19 @@ class TestWFParallel:
         assert any("cross-branch" in e for e in r.errors)
 
     def test_nested_parallel_left(self) -> None:
-        """( (a.end || b.end) || c.end ) — left contains nested ∥."""
-        r = _wf("( (a . end || b . end) || c . end )")
+        """((&{a: end} || &{b: end}) || &{c: end}) — left contains nested parallel."""
+        r = _wf("((&{a: end} || &{b: end}) || &{c: end})")
         assert r.is_well_formed is False
         assert any("nested" in e for e in r.errors)
 
     def test_nested_parallel_right(self) -> None:
-        """( a.end || (b.end || c.end) ) — right contains nested ∥."""
-        r = _wf("( a . end || (b . end || c . end) )")
+        """(&{a: end} || (&{b: end} || &{c: end})) — right contains nested parallel."""
+        r = _wf("(&{a: end} || (&{b: end} || &{c: end}))")
         assert r.is_well_formed is False
         assert any("nested" in e for e in r.errors)
 
     def test_no_parallel_is_well_formed(self) -> None:
-        """A type with no ∥ is trivially well-formed."""
+        """A type with no parallel is trivially well-formed."""
         r = _wf("rec X . &{a: X, done: end}")
         assert r.is_well_formed is True
         assert r.errors == ()
@@ -289,7 +291,7 @@ class TestBenchmarks:
             )
 
     def test_all_benchmarks_wf_parallel(self, benchmarks: list) -> None:
-        """All benchmarks with ∥ should be well-formed."""
+        """All benchmarks with parallel should be well-formed."""
         for bp in benchmarks:
             if bp.uses_parallel:
                 node = parse(bp.type_string)
@@ -316,11 +318,11 @@ class TestHelpers:
         assert _free_vars(Var("X")) == {"X"}
 
     def test_free_vars_rec_binds(self) -> None:
-        """rec X . X → no free vars (X is bound)."""
+        """rec X . X -> no free vars (X is bound)."""
         assert _free_vars(Rec("X", Var("X"))) == set()
 
     def test_free_vars_rec_with_other(self) -> None:
-        """rec X . &{a: X, b: Y} → {Y}."""
+        """rec X . &{a: X, b: Y} -> {Y}."""
         node = Rec("X", Branch((("a", Var("X")), ("b", Var("Y")))))
         assert _free_vars(node) == {"Y"}
 
@@ -329,8 +331,12 @@ class TestHelpers:
         assert _free_vars(node) == {"A", "B"}
 
     def test_free_vars_sequence(self) -> None:
-        node = Sequence(Var("X"), End())
+        node = Continuation(Var("X"), End())
         assert _free_vars(node) == {"X"}
+
+    def test_free_vars_wait(self) -> None:
+        """Wait has no free vars (terminal node like End)."""
+        assert _free_vars(Wait()) == set()
 
     # -- _bound_vars --
 
@@ -350,6 +356,10 @@ class TestHelpers:
     def test_bound_vars_parallel(self) -> None:
         node = Parallel(Rec("X", Var("X")), Rec("Y", Var("Y")))
         assert _bound_vars(node) == {"X", "Y"}
+
+    def test_bound_vars_wait(self) -> None:
+        """Wait has no bound vars (terminal node like End)."""
+        assert _bound_vars(Wait()) == set()
 
     # -- _contains_parallel --
 
@@ -384,6 +394,10 @@ class TestHelpers:
 
     def test_exit_path_through_inner_rec(self) -> None:
         """rec Y . &{b: Y, done: end} — checking forbidden=X:
-        inner rec, check body; 'done' branch → End → True."""
+        inner rec, check body; 'done' branch -> End -> True."""
         node = Rec("Y", Branch((("b", Var("Y")), ("done", End()))))
         assert _has_exit_path(node, "X") is True
+
+    def test_exit_path_wait(self) -> None:
+        """Wait is a terminal node, so it has an exit path."""
+        assert _has_exit_path(Wait(), "X") is True

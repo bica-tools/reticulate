@@ -50,47 +50,47 @@ class TestDotSourceEnd:
 
 class TestDotSourceChain:
     def test_has_three_nodes(self) -> None:
-        ss = build_statespace(parse("a . b . end"))
+        ss = build_statespace(parse("&{a: &{b: end}}"))
         src = dot_source(ss)
         # Count node declarations (lines with '[' and 'label')
         node_lines = [l for l in src.splitlines() if "[" in l and "label=" in l and "->" not in l]
         assert len(node_lines) == 3
 
     def test_has_two_edges(self) -> None:
-        src = _dot("a . b . end")
+        src = _dot("&{a: &{b: end}}")
         assert src.count("->") == 2
 
     def test_edge_labels(self) -> None:
-        src = _dot("a . b . end")
+        src = _dot("&{a: &{b: end}}")
         assert '"a"' in src
         assert '"b"' in src
 
 
 class TestDotSourceDiamond:
     def test_has_four_nodes(self) -> None:
-        ss = build_statespace(parse("&{m: a.end, n: b.end}"))
+        ss = build_statespace(parse("&{m: &{a: end}, n: &{b: end}}"))
         src = dot_source(ss)
         node_lines = [l for l in src.splitlines() if "[" in l and "label=" in l and "->" not in l]
         assert len(node_lines) == 4
 
     def test_top_marked(self) -> None:
-        src = _dot("&{m: a.end, n: b.end}")
-        assert "\u22a4" in src  # ⊤
+        src = _dot("&{m: &{a: end}, n: &{b: end}}")
+        assert "\u22a4" in src  # top
 
     def test_bottom_marked(self) -> None:
-        src = _dot("&{m: a.end, n: b.end}")
-        assert "\u22a5" in src  # ⊥
+        src = _dot("&{m: &{a: end}, n: &{b: end}}")
+        assert "\u22a5" in src  # bot
 
 
 class TestDotSourceParallel:
     def test_has_four_nodes(self) -> None:
-        ss = build_statespace(parse("(a.end || b.end)"))
+        ss = build_statespace(parse("(&{a: end} || &{b: end})"))
         src = dot_source(ss)
         node_lines = [l for l in src.splitlines() if "[" in l and "label=" in l and "->" not in l]
         assert len(node_lines) == 4
 
     def test_edge_labels_present(self) -> None:
-        src = _dot("(a.end || b.end)")
+        src = _dot("(&{a: end} || &{b: end})")
         assert '"a"' in src
         assert '"b"' in src
 
@@ -112,14 +112,14 @@ class TestDotSourceRecursive:
 
 class TestDotSourceWithResult:
     def test_uses_result(self) -> None:
-        src = _dot_with_result("&{m: a.end, n: b.end}")
+        src = _dot_with_result("&{m: &{a: end}, n: &{b: end}}")
         assert "rankdir=TB" in src
         # Should still have the markers
         assert "\u22a4" in src
         assert "\u22a5" in src
 
     def test_title_with_result(self) -> None:
-        src = _dot_with_result("&{m: a.end, n: b.end}", title="Diamond lattice")
+        src = _dot_with_result("&{m: &{a: end}, n: &{b: end}}", title="Diamond lattice")
         assert "Diamond lattice" in src
 
 
@@ -154,7 +154,7 @@ class TestDotSourceWithCycles:
 
 class TestDotSourceNoLabels:
     def test_id_only_labels(self) -> None:
-        ss = build_statespace(parse("a . end"))
+        ss = build_statespace(parse("&{a: end}"))
         src = dot_source(ss, labels=False)
         # Node labels should be just IDs (numbers), not the session type labels
         # The session type label "a" should not appear as a node label
@@ -166,7 +166,7 @@ class TestDotSourceNoLabels:
 
 class TestDotSourceNoEdgeLabels:
     def test_edges_without_labels(self) -> None:
-        src = _dot("a . b . end", edge_labels=False)
+        src = _dot("&{a: &{b: end}}", edge_labels=False)
         # There should be edges but without label attributes
         edge_lines = [l for l in src.splitlines() if "->" in l]
         assert len(edge_lines) > 0
@@ -191,7 +191,7 @@ class TestDotSourceTitle:
 class TestDotSourceTruncation:
     def test_long_labels_truncated(self) -> None:
         # Product of two chains should create composite labels
-        ss = build_statespace(parse("(a.b.c.d.e.f.g.h.end || i.j.k.l.m.n.o.p.end)"))
+        ss = build_statespace(parse("(&{a: &{b: &{c: end}}} || &{d: &{e: &{f: end}}})"))
         src = dot_source(ss)
         # Extract all label values from node lines
         for line in src.splitlines():
@@ -200,8 +200,8 @@ class TestDotSourceTruncation:
                 start = line.index('label="') + 7
                 end = line.index('"', start)
                 label = line[start:end]
-                # 40 chars + possible "…" suffix = max 41
-                # Plus "⊤ " or "⊥ " prefix (3 chars) = max 44
+                # 40 chars + possible "..." suffix = max 41
+                # Plus "top " or "bot " prefix (3 chars) = max 44
                 assert len(label) <= 44, f"Label too long ({len(label)}): {label!r}"
 
 
@@ -218,7 +218,7 @@ class TestHasseDiagram:
 
     def test_source_contains_dot(self) -> None:
         pytest.importorskip("graphviz")
-        ss = build_statespace(parse("a . end"))
+        ss = build_statespace(parse("&{a: end}"))
         g = hasse_diagram(ss)
         assert "rankdir=TB" in g.source
 
@@ -230,7 +230,7 @@ class TestHasseDiagram:
 class TestRenderHasse:
     def test_render_creates_file(self) -> None:
         pytest.importorskip("graphviz")
-        ss = build_statespace(parse("a . end"))
+        ss = build_statespace(parse("&{a: end}"))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_hasse")
             try:
@@ -242,7 +242,7 @@ class TestRenderHasse:
 
     def test_render_svg(self) -> None:
         pytest.importorskip("graphviz")
-        ss = build_statespace(parse("a . end"))
+        ss = build_statespace(parse("&{a: end}"))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_hasse")
             try:

@@ -26,7 +26,7 @@ def _ss(source: str) -> StateSpace:
 
 
 def _chain(n: int) -> StateSpace:
-    """Build a chain (total order) with *n* states: 0 → 1 → … → n-1.
+    """Build a chain (total order) with *n* states: 0 -> 1 -> ... -> n-1.
 
     Top=0, bottom=n-1.
     """
@@ -66,7 +66,7 @@ def _diamond() -> StateSpace:
 
 
 def _two_chain() -> StateSpace:
-    """2-element chain: 0 → 1."""
+    """2-element chain: 0 -> 1."""
     return _chain(2)
 
 
@@ -87,7 +87,7 @@ class TestOrderPreserving:
         ss = _chain(3)
         # Map everything to state 2 (bottom)
         mapping = {s: 2 for s in ss.states}
-        # 0 ≥ 1, but f(1)=2 should be in reach(f(0))=reach(2)={2}. f(1)=2 ∈ {2}. OK.
+        # 0 >= 1, but f(1)=2 should be in reach(f(0))=reach(2)={2}. f(1)=2 in {2}. OK.
         # Actually constant-to-bottom IS preserving: reach(bottom) = {bottom},
         # and everything maps to bottom.
         assert is_order_preserving(ss, ss, mapping) is True
@@ -96,27 +96,27 @@ class TestOrderPreserving:
         """Map everything to top — top reaches everything, so this preserves."""
         ss = _chain(3)
         mapping = {s: 0 for s in ss.states}
-        # 0 ≥ 2 (bottom), but f(2)=0, and 0 ∈ reach(f(0))=reach(0)={0,1,2}. OK.
+        # 0 >= 2 (bottom), but f(2)=0, and 0 in reach(f(0))=reach(0)={0,1,2}. OK.
         # This IS preserving since top reaches everything.
         assert is_order_preserving(ss, ss, mapping) is True
 
     def test_order_reversing_fails(self) -> None:
-        """Reverse the chain: 0→2, 1→1, 2→0. Should fail preserving."""
+        """Reverse the chain: 0->2, 1->1, 2->0. Should fail preserving."""
         ss = _chain(3)
         mapping = {0: 2, 1: 1, 2: 0}
-        # 0 ≥ 2 (i.e., 2 ∈ reach(0)), so need f(2) ∈ reach(f(0)).
-        # f(2)=0, f(0)=2. reach(2)={2}. 0 ∉ {2}. Fails.
+        # 0 >= 2 (i.e., 2 in reach(0)), so need f(2) in reach(f(0)).
+        # f(2)=0, f(0)=2. reach(2)={2}. 0 not in {2}. Fails.
         assert is_order_preserving(ss, ss, mapping) is False
 
     def test_valid_homomorphism(self) -> None:
-        """Chain(3) → Chain(2) collapsing middle to top."""
+        """Chain(3) -> Chain(2) collapsing middle to top."""
         src = _chain(3)
         tgt = _chain(2)
-        # 0→0, 1→0, 2→1
+        # 0->0, 1->0, 2->1
         mapping = {0: 0, 1: 0, 2: 1}
-        # Preserving: 0≥1, f(1)=0∈reach(f(0))=reach(0)={0,1}. ✓
-        # 0≥2, f(2)=1∈reach(0)={0,1}. ✓
-        # 1≥2, f(2)=1∈reach(f(1))=reach(0)={0,1}. ✓
+        # Preserving: 0>=1, f(1)=0 in reach(f(0))=reach(0)={0,1}. ok
+        # 0>=2, f(2)=1 in reach(0)={0,1}. ok
+        # 1>=2, f(2)=1 in reach(f(1))=reach(0)={0,1}. ok
         assert is_order_preserving(src, tgt, mapping) is True
 
 
@@ -133,24 +133,24 @@ class TestOrderReflecting:
         assert is_order_reflecting(ss, ss, mapping) is True
 
     def test_embedding_reflects(self) -> None:
-        """Chain(2) ↪ Chain(3): 0→0, 1→2. Should reflect."""
+        """Chain(2) -> Chain(3): 0->0, 1->2. Should reflect."""
         src = _chain(2)
         tgt = _chain(3)
         mapping = {0: 0, 1: 2}
-        # For reflecting: f(s2) ∈ reach(f(s1)) ⟹ s2 ∈ reach(s1)
-        # f(1)=2 ∈ reach(f(0))=reach(0)={0,1,2} → 1 ∈ reach(0)={0,1} ✓
-        # f(0)=0 ∈ reach(f(1))=reach(2)={2}? No → vacuously true ✓
+        # For reflecting: f(s2) in reach(f(s1)) => s2 in reach(s1)
+        # f(1)=2 in reach(f(0))=reach(0)={0,1,2} -> 1 in reach(0)={0,1} ok
+        # f(0)=0 in reach(f(1))=reach(2)={2}? No -> vacuously true ok
         assert is_order_reflecting(src, tgt, mapping) is True
 
     def test_non_reflecting_surjection(self) -> None:
-        """Chain(3) → Chain(2): 0→0, 1→0, 2→1. Not reflecting."""
+        """Chain(3) -> Chain(2): 0->0, 1->0, 2->1. Not reflecting."""
         src = _chain(3)
         tgt = _chain(2)
         mapping = {0: 0, 1: 0, 2: 1}
-        # f(0)=0, f(1)=0. f(1)∈reach(f(0))=reach(0)={0,1}? 0∈{0,1}=yes.
-        # So need: 1∈reach(0)={0,1,2}. Yes, ok.
-        # f(0)=0∈reach(f(1))=reach(0)={0,1}? Yes.
-        # So need: 0∈reach(1)={1,2}? No! Fails reflecting.
+        # f(0)=0, f(1)=0. f(1) in reach(f(0))=reach(0)={0,1}? 0 in {0,1}=yes.
+        # So need: 1 in reach(0)={0,1,2}. Yes, ok.
+        # f(0)=0 in reach(f(1))=reach(0)={0,1}? Yes.
+        # So need: 0 in reach(1)={1,2}? No! Fails reflecting.
         assert is_order_reflecting(src, tgt, mapping) is False
 
 
@@ -168,7 +168,7 @@ class TestClassifyMorphism:
         assert m.kind == "isomorphism"
 
     def test_injection_is_embedding(self) -> None:
-        """Chain(2) ↪ Chain(3): 0→0, 1→2. Injective + reflecting, not surjective."""
+        """Chain(2) -> Chain(3): 0->0, 1->2. Injective + reflecting, not surjective."""
         src = _chain(2)
         tgt = _chain(3)
         mapping = {0: 0, 1: 2}
@@ -176,7 +176,7 @@ class TestClassifyMorphism:
         assert m.kind == "embedding"
 
     def test_surjection_is_projection(self) -> None:
-        """Chain(3) → Chain(2): 0→0, 1→0, 2→1. Surjective, not reflecting."""
+        """Chain(3) -> Chain(2): 0->0, 1->0, 2->1. Surjective, not reflecting."""
         src = _chain(3)
         tgt = _chain(2)
         mapping = {0: 0, 1: 0, 2: 1}
@@ -184,16 +184,16 @@ class TestClassifyMorphism:
         assert m.kind == "projection"
 
     def test_general_homomorphism(self) -> None:
-        """Diamond → Chain(2): collapse left/right to top. Preserving, not injective, not surjective in some cases."""
+        """Diamond -> Chain(2): collapse left/right to top. Preserving, not injective, not surjective in some cases."""
         src = _diamond()
         tgt = _chain(3)
-        # 0→0, 1→1, 2→1, 3→2. Surjective, let's check reflecting.
+        # 0->0, 1->1, 2->1, 3->2. Surjective, let's check reflecting.
         mapping = {0: 0, 1: 1, 2: 1, 3: 2}
-        # Preserving: 0≥1→f(1)=1∈reach(f(0))=reach(0)={0,1,2}✓
-        # 0≥2→f(2)=1∈reach(0)✓. 0≥3→f(3)=2∈reach(0)✓.
-        # 1≥3→f(3)=2∈reach(f(1))=reach(1)={1,2}✓.
-        # 2≥3→f(3)=2∈reach(f(2))=reach(1)={1,2}✓.
-        # Reflecting: f(2)=1∈reach(f(1))=reach(1)={1,2}? yes. 2∈reach(1)? reach(1)={1,3}. 2∉{1,3}. FAILS.
+        # Preserving: 0>=1->f(1)=1 in reach(f(0))=reach(0)={0,1,2} ok
+        # 0>=2->f(2)=1 in reach(0) ok. 0>=3->f(3)=2 in reach(0) ok.
+        # 1>=3->f(3)=2 in reach(f(1))=reach(1)={1,2} ok.
+        # 2>=3->f(3)=2 in reach(f(2))=reach(1)={1,2} ok.
+        # Reflecting: f(2)=1 in reach(f(1))=reach(1)={1,2}? yes. 2 in reach(1)? reach(1)={1,3}. 2 not in {1,3}. FAILS.
         # So it's a projection (surjective, not reflecting).
         m = classify_morphism(src, tgt, mapping)
         assert m.kind == "projection"
@@ -224,8 +224,8 @@ class TestFindIsomorphism:
 
     def test_isomorphic_chains(self) -> None:
         """Two chain(3)s built independently should be isomorphic."""
-        ss1 = _ss("a . b . end")
-        ss2 = _ss("x . y . end")
+        ss1 = _ss("&{a: &{b: end}}")
+        ss2 = _ss("&{x: &{y: end}}")
         m = find_isomorphism(ss1, ss2)
         assert m is not None
         assert m.kind == "isomorphism"
@@ -233,9 +233,9 @@ class TestFindIsomorphism:
         assert m.mapping[ss1.bottom] == ss2.bottom
 
     def test_non_iso_different_sizes(self) -> None:
-        """Different state counts → not isomorphic."""
-        ss1 = _ss("a . end")
-        ss2 = _ss("a . b . end")
+        """Different state counts -> not isomorphic."""
+        ss1 = _ss("&{a: end}")
+        ss2 = _ss("&{a: &{b: end}}")
         assert find_isomorphism(ss1, ss2) is None
 
     def test_non_iso_same_size_different_structure(self) -> None:
@@ -259,15 +259,15 @@ class TestFindIsomorphism:
         assert m is not None
 
     def test_product_commutativity(self) -> None:
-        """L(a.end ∥ b.end) ≅ L(b.end ∥ a.end)."""
-        ss1 = _ss("(a . end || b . end)")
-        ss2 = _ss("(b . end || a . end)")
+        """L(&{a: end} || &{b: end}) is isomorphic to L(&{b: end} || &{a: end})."""
+        ss1 = _ss("(&{a: end} || &{b: end})")
+        ss2 = _ss("(&{b: end} || &{a: end})")
         m = find_isomorphism(ss1, ss2)
         assert m is not None
         assert m.kind == "isomorphism"
 
     def test_different_transition_counts(self) -> None:
-        """Same states but different transitions → not isomorphic."""
+        """Same states but different transitions -> not isomorphic."""
         ss1 = _chain(3)
         # 3 states but extra transition
         ss2 = StateSpace(
@@ -287,7 +287,7 @@ class TestFindEmbedding:
     """Tests for find_embedding."""
 
     def test_chain_embeds_in_longer_chain(self) -> None:
-        """Chain(2) ↪ Chain(3)."""
+        """Chain(2) -> Chain(3)."""
         ss1 = _chain(2)
         ss2 = _chain(3)
         m = find_embedding(ss1, ss2)
@@ -298,7 +298,7 @@ class TestFindEmbedding:
         assert m.mapping[1] == 2
 
     def test_chain_embeds_in_diamond(self) -> None:
-        """Chain(2) ↪ diamond: top→top, bottom→bottom."""
+        """Chain(2) -> diamond: top->top, bottom->bottom."""
         ss1 = _chain(2)
         ss2 = _diamond()
         m = find_embedding(ss1, ss2)
@@ -351,21 +351,12 @@ class TestGaloisConnection:
     def test_invalid_pair(self) -> None:
         """An arbitrary non-adjoint pair should fail."""
         ss = _chain(3)
-        # alpha sends everything to bottom, gamma sends everything to top
-        alpha = {0: 2, 1: 2, 2: 2}
-        gamma = {0: 0, 1: 0, 2: 0}
-        # α(0)=2, y=0. α(0)≤y means 2∈reach(0)={0,1,2}. Yes.
-        # x≤γ(y): 0∈reach(γ(0))=reach(0)={0,1,2}. Yes.
-        # α(0)=2, y=1. α(0)≤y means 2∈reach(1)={1,2}. Yes.
-        # x≤γ(y): 0∈reach(γ(1))=reach(0)={0,1,2}. Yes.
-        # α(1)=2, y=0. α(1)≤y means 2∈reach(0)={0,1,2}. Yes.
-        # 1≤γ(0): 1∈reach(0)={0,1,2}. Yes.
-        # Hmm this might actually be a GC. Let me try a clearly invalid one.
+        # alpha sends everything to top, gamma sends everything to bottom
         alpha2 = {0: 0, 1: 0, 2: 0}  # everything to top
         gamma2 = {0: 2, 1: 2, 2: 2}  # everything to bottom
-        # α(2)=0, y=2. α(2)≤y means 0∈reach(2)={2}. No.
-        # x≤γ(y): 2∈reach(γ(2))=reach(2)={2}. Yes.
-        # So α(2)≤y=False but x≤γ(y)=True. NOT equivalent. Fails.
+        # alpha(2)=0, y=2. alpha(2)<=y means 0 in reach(2)={2}. No.
+        # x<=gamma(y): 2 in reach(gamma(2))=reach(2)={2}. Yes.
+        # So alpha(2)<=y=False but x<=gamma(y)=True. NOT equivalent. Fails.
         assert is_galois_connection(alpha2, gamma2, ss, ss) is False
 
     def test_galois_connection_two_state(self) -> None:
@@ -376,13 +367,13 @@ class TestGaloisConnection:
         assert is_galois_connection(alpha, gamma, ss, ss) is True
 
     def test_constant_bottom_top(self) -> None:
-        """α=const bottom, γ=const bottom: check."""
+        """alpha=const bottom, gamma=const bottom: check."""
         ss = _chain(3)
         alpha = {0: 2, 1: 2, 2: 2}  # everything to bottom
         gamma = {0: 2, 1: 2, 2: 2}  # everything to bottom
-        # α(x)≤y ⟺ 2∈reach(y). True only when y can reach 2.
-        # x≤γ(y) ⟺ x∈reach(2)={2}. True only when x=2.
-        # For x=0, y=0: α(0)≤0 → 2∈reach(0)=yes. But 0∈reach(2)=no. Mismatch.
+        # alpha(x)<=y iff 2 in reach(y). True only when y can reach 2.
+        # x<=gamma(y) iff x in reach(2)={2}. True only when x=2.
+        # For x=0, y=0: alpha(0)<=0 -> 2 in reach(0)=yes. But 0 in reach(2)=no. Mismatch.
         assert is_galois_connection(alpha, gamma, ss, ss) is False
 
 
@@ -391,7 +382,7 @@ class TestGaloisConnection:
 # ===================================================================
 
 class TestHierarchy:
-    """Verify the strict inclusions: iso ⊂ embed ⊂ project ⊂ homo."""
+    """Verify the strict inclusions: iso < embed < project < homo."""
 
     def test_iso_implies_embed(self) -> None:
         """An isomorphism is also an embedding."""
@@ -402,7 +393,7 @@ class TestHierarchy:
         # An iso is trivially injective + reflecting = embedding conditions met
 
     def test_embed_not_project(self) -> None:
-        """Chain(2) ↪ Chain(3) is an embedding but not a projection (not surjective)."""
+        """Chain(2) -> Chain(3) is an embedding but not a projection (not surjective)."""
         src = _chain(2)
         tgt = _chain(3)
         mapping = {0: 0, 1: 2}
@@ -412,7 +403,7 @@ class TestHierarchy:
         assert 1 not in set(mapping.values())
 
     def test_project_not_embed(self) -> None:
-        """Chain(3) → Chain(2) projecting: 0→0, 1→0, 2→1.
+        """Chain(3) -> Chain(2) projecting: 0->0, 1->0, 2->1.
         Surjective but not injective or reflecting."""
         src = _chain(3)
         tgt = _chain(2)
@@ -423,8 +414,8 @@ class TestHierarchy:
     def test_homo_not_project_not_embed(self) -> None:
         """A homomorphism that is neither injective nor surjective nor reflecting.
 
-        Diamond(4) → Chain(4): 0→0, 1→1, 2→1, 3→3.
-        Not injective (1,2→1). Not surjective (2 in target not hit).
+        Diamond(4) -> Chain(4): 0->0, 1->1, 2->1, 3->3.
+        Not injective (1,2->1). Not surjective (2 in target not hit).
         So it's just a homomorphism.
         """
         src = _diamond()

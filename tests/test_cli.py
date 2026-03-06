@@ -41,17 +41,17 @@ class TestDefaultOutput:
         assert "IS a lattice" in out
 
     def test_basic_chain(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["a . b . end"], capsys)
+        out = _run(["&{a: &{b: end}}"], capsys)
         assert "States: 3" in out
         assert "IS a lattice" in out
 
     def test_basic_diamond(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["&{m: a.end, n: b.end}"], capsys)
+        out = _run(["&{m: &{a: end}, n: &{b: end}}"], capsys)
         # Branch with 2 choices + 2 continuations + end = several states
         assert "IS a lattice" in out
 
     def test_parallel(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["(a.end || b.end)"], capsys)
+        out = _run(["(&{a: end} || &{b: end})"], capsys)
         assert "IS a lattice" in out
 
     def test_recursive(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -75,11 +75,11 @@ class TestDefaultOutput:
         assert "All joins exist:" in out
 
     def test_scc_count_shown(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["a . b . end"], capsys)
+        out = _run(["&{a: &{b: end}}"], capsys)
         assert "SCCs:" in out
 
     def test_transition_count(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["a . end"], capsys)
+        out = _run(["&{a: end}"], capsys)
         assert "Transitions:" in out
 
     def test_pretty_prints_type(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -119,28 +119,28 @@ class TestErrors:
 
 class TestDotOutput:
     def test_dot_output(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["--dot", "a.end"], capsys)
+        out = _run(["--dot", "&{a: end}"], capsys)
         assert "digraph" in out
         assert "rankdir=TB" in out
 
     def test_dot_no_labels(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["--dot", "--no-labels", "a.end"], capsys)
+        out = _run(["--dot", "--no-labels", "&{a: end}"], capsys)
         assert "digraph" in out
         # The output should not contain the label text "a" as a node label
 
     def test_dot_no_edge_labels(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["--dot", "--no-edge-labels", "a.end"], capsys)
+        out = _run(["--dot", "--no-edge-labels", "&{a: end}"], capsys)
         # Edge lines should not have label= attributes
         edge_lines = [l for l in out.splitlines() if "->" in l]
         for line in edge_lines:
             assert "label=" not in line
 
     def test_dot_with_title(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["--dot", "--title", "Test Title", "a.end"], capsys)
+        out = _run(["--dot", "--title", "Test Title", "&{a: end}"], capsys)
         assert "Test Title" in out
 
     def test_dot_diamond(self, capsys: pytest.CaptureFixture[str]) -> None:
-        out = _run(["--dot", "&{m: a.end, n: b.end}"], capsys)
+        out = _run(["--dot", "&{m: &{a: end}, n: &{b: end}}"], capsys)
         assert "digraph" in out
         assert "->" in out
 
@@ -163,7 +163,7 @@ class TestHasseOutput:
             pytest.skip("graphviz Python package not installed")
 
         path = os.path.join(tmpdir, "out")
-        out = _run(["--hasse", path, "a.end"], capsys)
+        out = _run(["--hasse", path, "&{a: end}"], capsys)
         assert "Rendered to" in out
 
     def test_hasse_svg(self, tmpdir: str, capsys: pytest.CaptureFixture[str]) -> None:
@@ -174,7 +174,7 @@ class TestHasseOutput:
             pytest.skip("graphviz Python package not installed")
 
         path = os.path.join(tmpdir, "out")
-        out = _run(["--hasse", path, "--fmt", "svg", "a.end"], capsys)
+        out = _run(["--hasse", path, "--fmt", "svg", "&{a: end}"], capsys)
         assert "Rendered to" in out
 
     def test_hasse_default_path(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -190,7 +190,7 @@ class TestHasseOutput:
             try:
                 os.chdir(tmpdir)
                 # Put positional arg first so --hasse uses its const default
-                out = _run(["a.end", "--hasse"], capsys)
+                out = _run(["&{a: end}", "--hasse"], capsys)
                 assert "Rendered to" in out
             finally:
                 os.chdir(old_cwd)
@@ -202,7 +202,7 @@ class TestHasseOutput:
 
 class TestModuleInvocation:
     def test_reticulate_cli_module(self) -> None:
-        """python -m reticulate.cli end → exit code 0."""
+        """python -m reticulate.cli end -> exit code 0."""
         result = subprocess.run(
             [sys.executable, "-m", "reticulate.cli", "end"],
             capture_output=True,
@@ -213,7 +213,7 @@ class TestModuleInvocation:
         assert "IS a lattice" in result.stdout
 
     def test_reticulate_module(self) -> None:
-        """python -m reticulate end → exit code 0."""
+        """python -m reticulate end -> exit code 0."""
         result = subprocess.run(
             [sys.executable, "-m", "reticulate", "end"],
             capture_output=True,

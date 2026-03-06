@@ -48,7 +48,7 @@ class TestValidPaths:
         assert paths[0].labels == []
 
     def test_simple_chain_one_path(self):
-        paths, _ = enumerate_valid_paths(ss("a . b . end"), 2)
+        paths, _ = enumerate_valid_paths(ss("&{a: &{b: end}}"), 2)
         assert len(paths) == 1
         assert paths[0].labels == ["a", "b"]
 
@@ -79,12 +79,12 @@ class TestValidPaths:
         assert result.truncated
 
     def test_no_truncation(self):
-        result = enumerate(ss("a . end"), TestGenConfig("Obj"))
+        result = enumerate(ss("&{a: end}"), TestGenConfig("Obj"))
         assert not result.truncated
 
     def test_chain_with_branch(self):
         paths, _ = enumerate_valid_paths(
-            ss("open . &{read: close . end, write: close . end}"), 2)
+            ss("&{open: &{read: &{close: end}, write: &{close: end}}}"), 2)
         assert len(paths) == 2
         for p in paths:
             assert p.labels[0] == "open"
@@ -102,21 +102,21 @@ class TestViolations:
         assert violations == []
 
     def test_simple_chain_violations(self):
-        violations = enumerate_violations(ss("a . b . end"))
+        violations = enumerate_violations(ss("&{a: &{b: end}}"))
         assert len(violations) == 2
 
     def test_single_method_no_violations(self):
-        violations = enumerate_violations(ss("a . end"))
+        violations = enumerate_violations(ss("&{a: end}"))
         assert violations == []
 
     def test_violation_has_correct_prefix(self):
-        violations = enumerate_violations(ss("a . b . end"))
+        violations = enumerate_violations(ss("&{a: &{b: end}}"))
         v_for_a = [v for v in violations if v.disabled_method == "a"]
         assert len(v_for_a) == 1
         assert v_for_a[0].prefix_labels == ["a"]
 
     def test_violation_enabled_methods(self):
-        violations = enumerate_violations(ss("a . b . end"))
+        violations = enumerate_violations(ss("&{a: &{b: end}}"))
         v_at_top = [v for v in violations if not v.prefix_path]
         assert len(v_at_top) == 1
         assert v_at_top[0].enabled_methods == frozenset({"a"})
@@ -138,14 +138,14 @@ class TestIncompletePrefixes:
         assert incomplete == []
 
     def test_simple_chain_one_incomplete(self):
-        space = ss("a . b . end")
+        space = ss("&{a: &{b: end}}")
         paths, _ = enumerate_valid_paths(space, 2)
         incomplete = enumerate_incomplete_prefixes(space, paths)
         assert len(incomplete) == 1
         assert incomplete[0].labels == ["a"]
 
     def test_longer_chain_multiple(self):
-        space = ss("a . b . c . end")
+        space = ss("&{a: &{b: &{c: end}}}")
         paths, _ = enumerate_valid_paths(space, 2)
         incomplete = enumerate_incomplete_prefixes(space, paths)
         assert len(incomplete) == 2
@@ -154,14 +154,14 @@ class TestIncompletePrefixes:
         assert ("a", "b") in label_sets
 
     def test_deduplicates(self):
-        space = ss("&{m: a.end, n: a.end}")
+        space = ss("&{m: &{a: end}, n: &{a: end}}")
         paths, _ = enumerate_valid_paths(space, 2)
         incomplete = enumerate_incomplete_prefixes(space, paths)
         label_seqs = [tuple(p.labels) for p in incomplete]
         assert len(label_seqs) == len(set(label_seqs))
 
     def test_remaining_methods(self):
-        space = ss("open . &{read: close . end, write: close . end}")
+        space = ss("&{open: &{read: &{close: end}, write: &{close: end}}}")
         paths, _ = enumerate_valid_paths(space, 2)
         incomplete = enumerate_incomplete_prefixes(space, paths)
         after_open = [p for p in incomplete if p.labels == ["open"]]
@@ -192,35 +192,35 @@ class TestGenerate:
         assert "package com.example;" in out
 
     def test_valid_path_chain(self):
-        out = gen("a . b . end")
+        out = gen("&{a: &{b: end}}")
         assert "validPath_a_b" in out
         assert "obj.a();" in out
         assert "obj.b();" in out
 
     def test_custom_class_name(self):
-        out = gen("a . end", TestGenConfig("FileHandle"))
+        out = gen("&{a: end}", TestGenConfig("FileHandle"))
         assert "FileHandle obj = new FileHandle()" in out
         assert "class FileHandleProtocolTest" in out
 
     def test_custom_var_name(self):
-        out = gen("a . end", TestGenConfig("Obj", var_name="sut"))
+        out = gen("&{a: end}", TestGenConfig("Obj", var_name="sut"))
         assert "Obj sut = new Obj()" in out
 
     def test_violations_section(self):
-        out = gen("a . b . end")
+        out = gen("&{a: &{b: end}}")
         assert "Violations" in out
         assert "assertThrows(IllegalStateException.class" in out
 
     def test_violation_uses_assert_throws(self):
         """Clean violations (no selections in prefix) use assertThrows."""
-        out = gen("a . b . end")
+        out = gen("&{a: &{b: end}}")
         assert "assertThrows(IllegalStateException.class, () -> obj." in out
         # No @Disabled on clean violations
         assert "@Disabled" not in out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
 
     def test_selection_dependent_violation_uses_assert_throws(self):
         """Violations with selection steps in prefix also use assertThrows."""
-        out = gen("a . +{OK: b . end, ERR: end}")
+        out = gen("&{a: +{OK: &{b: end}, ERR: end}}")
         # No @Disabled on any violation
         violations_section = out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
         assert "@Disabled" not in violations_section
@@ -230,15 +230,15 @@ class TestGenerate:
 
     def test_assertions_import(self):
         """Generated source includes static Assertions import."""
-        out = gen("a . end")
+        out = gen("&{a: end}")
         assert "import static org.junit.jupiter.api.Assertions.*;" in out
 
     def test_incomplete_section(self):
-        out = gen("a . b . end")
+        out = gen("&{a: &{b: end}}")
         assert "Incomplete protocols" in out
 
     def test_file_handle_e2e(self):
-        out = gen("open . &{read: close . end, write: close . end}",
+        out = gen("&{open: &{read: &{close: end}, write: &{close: end}}}",
                   TestGenConfig("FileHandle"))
         assert "validPath_open_read_close" in out
         assert "validPath_open_write_close" in out
@@ -252,7 +252,7 @@ class TestGenerate:
         assert "validPath_next_done" in out
 
     def test_balanced_braces(self):
-        out = gen("open . &{read: close . end, write: close . end}")
+        out = gen("&{open: &{read: &{close: end}, write: &{close: end}}}")
         assert out.count("{") == out.count("}")
 
     def test_truncation_warning(self):
@@ -260,7 +260,7 @@ class TestGenerate:
         assert "WARNING" in out
 
     def test_select_steps_emitted_as_switch(self):
-        out = gen("m . +{OK: end, ERR: end}")
+        out = gen("&{m: +{OK: end, ERR: end}}")
         assert "var mResult = obj.m();" in out
         assert "switch (mResult)" in out
         assert "case OK ->" in out
@@ -271,7 +271,7 @@ class TestGenerate:
         assert "Violations (0)" in out
 
     def test_mixed_protocol_no_violations_at_selection_state(self):
-        out = gen("m . +{OK: end, ERR: end}")
+        out = gen("&{m: +{OK: end, ERR: end}}")
         assert "Violations (0)" in out
 
 
@@ -294,7 +294,7 @@ class TestStepKind:
                 assert step.kind == "method"
 
     def test_mixed_protocol_step_kinds(self):
-        paths, _ = enumerate_valid_paths(ss("m . +{OK: end, ERR: end}"), 2)
+        paths, _ = enumerate_valid_paths(ss("&{m: +{OK: end, ERR: end}}"), 2)
         for path in paths:
             assert path.steps[0].kind == "method"
             assert path.steps[1].kind == "selection"
@@ -304,7 +304,7 @@ class TestStepKind:
         assert violations == []
 
     def test_mixed_protocol_skips_pure_selection_state(self):
-        violations = enumerate_violations(ss("m . +{OK: end, ERR: end}"))
+        violations = enumerate_violations(ss("&{m: +{OK: end, ERR: end}}"))
         assert violations == []
 
 
@@ -321,7 +321,7 @@ class TestClientPrograms:
         assert not truncated
 
     def test_simple_chain(self):
-        programs, _ = enumerate_client_programs(ss("a . b . end"), 2)
+        programs, _ = enumerate_client_programs(ss("&{a: &{b: end}}"), 2)
         assert len(programs) == 1
         cp = programs[0]
         assert isinstance(cp, MethodCallNode)
@@ -337,7 +337,7 @@ class TestClientPrograms:
         assert labels == {"m", "n"}
 
     def test_simple_selection_switch(self):
-        programs, _ = enumerate_client_programs(ss("m . +{OK: end, ERR: end}"), 2)
+        programs, _ = enumerate_client_programs(ss("&{m: +{OK: end, ERR: end}}"), 2)
         assert len(programs) == 1
         cp = programs[0]
         assert isinstance(cp, SelectionSwitchNode)
@@ -348,7 +348,7 @@ class TestClientPrograms:
 
     def test_selection_with_sub_branches_zip(self):
         programs, _ = enumerate_client_programs(
-            ss("m . +{A: &{x: end, y: end}, B: end}"), 2)
+            ss("&{m: +{A: &{x: end, y: end}, B: end}}"), 2)
         assert len(programs) == 2
         for cp in programs:
             assert isinstance(cp, SelectionSwitchNode)
@@ -364,7 +364,7 @@ class TestClientPrograms:
 
     def test_recursive_selection(self):
         programs, _ = enumerate_client_programs(
-            ss("rec X . m . +{A: X, B: end}"), 2)
+            ss("rec X . &{m: +{A: X, B: end}}"), 2)
         assert len(programs) >= 1
         for cp in programs:
             assert isinstance(cp, SelectionSwitchNode)
@@ -377,7 +377,7 @@ class TestClientPrograms:
 
     def test_file_handle_no_selection(self):
         programs, _ = enumerate_client_programs(
-            ss("open . &{read: close . end, write: close . end}"), 2)
+            ss("&{open: &{read: &{close: end}, write: &{close: end}}}"), 2)
         assert len(programs) == 2
         for cp in programs:
             assert isinstance(cp, MethodCallNode)
@@ -385,7 +385,7 @@ class TestClientPrograms:
 
     def test_nested_selection(self):
         programs, _ = enumerate_client_programs(
-            ss("m . +{A: n . +{X: end, Y: end}, B: end}"), 2)
+            ss("&{m: +{A: &{n: +{X: end, Y: end}}, B: end}}"), 2)
         assert len(programs) == 1
         cp = programs[0]
         assert isinstance(cp, SelectionSwitchNode)
@@ -396,7 +396,7 @@ class TestClientPrograms:
 
     def test_recursive_max_revisits_zero(self):
         programs, _ = enumerate_client_programs(
-            ss("rec X . m . +{A: X, B: end}"), 0)
+            ss("rec X . &{m: +{A: X, B: end}}"), 0)
         assert len(programs) == 1
         cp = programs[0]
         assert isinstance(cp, SelectionSwitchNode)
@@ -422,39 +422,39 @@ class TestClientPrograms:
 
 class TestGeneratedSwitchStatements:
     def test_switch_variable_declaration(self):
-        out = gen("m . +{OK: end, ERR: end}")
+        out = gen("&{m: +{OK: end, ERR: end}}")
         assert "var mResult = obj.m();" in out
 
     def test_switch_keyword(self):
-        out = gen("m . +{OK: end, ERR: end}")
+        out = gen("&{m: +{OK: end, ERR: end}}")
         assert "switch (mResult) {" in out
 
     def test_switch_case_labels(self):
-        out = gen("m . +{OK: end, ERR: end}")
+        out = gen("&{m: +{OK: end, ERR: end}}")
         assert "case OK -> {" in out
         assert "case ERR -> {" in out
 
     def test_nested_switch_generation(self):
-        out = gen("m . +{A: n . +{X: end, Y: end}, B: end}")
+        out = gen("&{m: +{A: &{n: +{X: end, Y: end}}, B: end}}")
         assert "var mResult = obj.m();" in out
         assert "var nResult = obj.n();" in out
         assert "case A -> {" in out
         assert "case X -> {" in out
 
     def test_recursive_switch_variable_names(self):
-        out = gen("rec X . m . +{A: X, B: end}", TestGenConfig("Obj", max_revisits=1))
+        out = gen("rec X . &{m: +{A: X, B: end}}", TestGenConfig("Obj", max_revisits=1))
         assert "var mResult = obj.m();" in out
         assert "mResult2" in out
 
     def test_switch_balanced_braces(self):
-        out = gen("m . +{A: n . +{X: end, Y: end}, B: end}")
+        out = gen("&{m: +{A: &{n: +{X: end, Y: end}}, B: end}}")
         assert out.count("{") == out.count("}")
 
     def test_file_handle_no_switch(self):
-        out = gen("open . &{read: close . end, write: close . end}")
+        out = gen("&{open: &{read: &{close: end}, write: &{close: end}}}")
         assert "switch" not in out
         assert "obj.open();" in out
 
     def test_valid_path_count_with_selection(self):
-        out = gen("m . +{OK: end, ERR: end}")
+        out = gen("&{m: +{OK: end, ERR: end}}")
         assert "Valid paths (1)" in out
