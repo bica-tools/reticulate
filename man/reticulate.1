@@ -86,8 +86,8 @@ S  ::=  &{ m1 : S1 , ... , mn : Sn }    branch (external choice)
      |  rec X . S                        recursion
      |  ( S )                            grouping
      |  X                                type variable
-     |  end                              session terminated
      |  wait                             parallel branch completed
+     |  end                              session terminated
 .fi
 .RE
 .PP
@@ -197,14 +197,14 @@ in body
 The state space contains cycles; lattice checking quotients by
 strongly connected components.
 .TP
-.B end
-.I Terminated
-session.  No further method calls are permitted.  Final.
-.TP
 .B wait
 .I Synchronisation point.
 A parallel branch has completed.  Used inside parallel branches
 followed by a continuation.
+.TP
+.B end
+.I Terminated
+session.  No further method calls are permitted.  Final.
 .
 .SH EXIT STATUS
 .TP
