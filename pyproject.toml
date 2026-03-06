@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "session-lattice"
+name = "session2lattice"
 version = "0.1.0"
 description = "Session types as algebraic reticulates — lattice checker and toolchain"
 readme = "README.md"
@@ -20,7 +20,7 @@ viz = ["graphviz"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-session-lattice = "reticulate.cli:main"
+session2lattice = "reticulate.cli:main"
 reticulate = "reticulate.cli:main"
 
 [tool.setuptools.packages.find]

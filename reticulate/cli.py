@@ -21,12 +21,12 @@ from reticulate.visualize import dot_source, render_hasse
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        prog="reticulate",
+        prog="session2lattice",
         description="Session type analyzer \u2014 parse, build state space, check lattice properties.",
     )
     parser.add_argument(
         "type_string",
-        help='Session type string, e.g. "&{m: a.end, n: b.end}"',
+        help='Session type string, e.g. "&{open: &{read: end, close: end}}"',
     )
     parser.add_argument(
         "--hasse",
