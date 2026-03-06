@@ -21,7 +21,7 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 session2lattice = "reticulate.cli:main"
-bica-reborn = "reticulate.cli:main"
+bica = "reticulate.cli:main"
 s2l = "reticulate.cli:main"
 sess2lat = "reticulate.cli:main"
 lattice-check = "reticulate.cli:main"
