@@ -47,18 +47,18 @@ class TestSingleState:
 
 
 class TestChain:
-    """``a . b . end`` — 3-element chain (total order = lattice)."""
+    """``&{a: &{b: end}}`` — 3-element chain (total order = lattice)."""
 
     def test_is_lattice(self) -> None:
-        r = _check("a . b . end")
+        r = _check("&{a: &{b: end}}")
         assert r.is_lattice is True
 
     def test_three_sccs(self) -> None:
-        r = _check("a . b . end")
+        r = _check("&{a: &{b: end}}")
         assert r.num_scc == 3
 
     def test_all_properties(self) -> None:
-        r = _check("a . b . end")
+        r = _check("&{a: &{b: end}}")
         assert r.has_top is True
         assert r.has_bottom is True
         assert r.all_meets_exist is True
@@ -78,19 +78,19 @@ class TestBranchToEnd:
 
 
 class TestBranchDiamond:
-    """``&{m: a . end, n: b . end}`` — diamond: top -> {after_m, after_n} -> end."""
+    """``&{m: &{a: end}, n: &{b: end}}`` — diamond: top -> {after_m, after_n} -> end."""
 
     def test_is_lattice(self) -> None:
-        r = _check("&{m: a . end, n: b . end}")
+        r = _check("&{m: &{a: end}, n: &{b: end}}")
         assert r.is_lattice is True
 
     def test_four_sccs(self) -> None:
-        r = _check("&{m: a . end, n: b . end}")
+        r = _check("&{m: &{a: end}, n: &{b: end}}")
         assert r.num_scc == 4
 
     def test_meet_of_branches_is_bottom(self) -> None:
         """The meet of the two intermediate states should be bottom."""
-        ss = _ss("&{m: a . end, n: b . end}")
+        ss = _ss("&{m: &{a: end}, n: &{b: end}}")
         # Find the two intermediate states (not top, not bottom)
         intermediates = [s for s in ss.states if s != ss.top and s != ss.bottom]
         assert len(intermediates) == 2
@@ -99,7 +99,7 @@ class TestBranchDiamond:
 
     def test_join_of_branches_is_top(self) -> None:
         """The join of the two intermediate states should be top."""
-        ss = _ss("&{m: a . end, n: b . end}")
+        ss = _ss("&{m: &{a: end}, n: &{b: end}}")
         intermediates = [s for s in ss.states if s != ss.top and s != ss.bottom]
         assert len(intermediates) == 2
         join = compute_join(ss, intermediates[0], intermediates[1])
@@ -154,10 +154,10 @@ class TestNestedRec:
 # ===================================================================
 
 class TestProduct2x2:
-    """``(a . end || b . end)`` — 2×2 product lattice (diamond)."""
+    """``(&{a: end} || &{b: end})`` — 2x2 product lattice (diamond)."""
 
     def setup_method(self) -> None:
-        self.ss = _ss("(a . end || b . end)")
+        self.ss = _ss("(&{a: end} || &{b: end})")
         self.result = check_lattice(self.ss)
 
     def test_is_lattice(self) -> None:
@@ -167,7 +167,7 @@ class TestProduct2x2:
         assert self.result.num_scc == 4
 
     def test_meet_of_intermediates(self) -> None:
-        """In the 2×2 product, the two intermediate states have meet = bottom."""
+        """In the 2x2 product, the two intermediate states have meet = bottom."""
         intermediates = sorted(
             s for s in self.ss.states if s != self.ss.top and s != self.ss.bottom
         )
@@ -176,7 +176,7 @@ class TestProduct2x2:
         assert meet == self.ss.bottom
 
     def test_join_of_intermediates(self) -> None:
-        """In the 2×2 product, the two intermediate states have join = top."""
+        """In the 2x2 product, the two intermediate states have join = top."""
         intermediates = sorted(
             s for s in self.ss.states if s != self.ss.top and s != self.ss.bottom
         )
@@ -196,10 +196,10 @@ class TestProduct2x2:
 
 
 class TestProduct3x3:
-    """``(a . b . end || c . d . end)`` — 3×3 = 9-state product lattice."""
+    """``(&{a: &{b: end}} || &{c: &{d: end}})`` — 3x3 = 9-state product lattice."""
 
     def setup_method(self) -> None:
-        self.result = _check("(a . b . end || c . d . end)")
+        self.result = _check("(&{a: &{b: end}} || &{c: &{d: end}})")
 
     def test_is_lattice(self) -> None:
         assert self.result.is_lattice is True
@@ -209,7 +209,7 @@ class TestProduct3x3:
 
 
 class TestRecursiveProduct:
-    """``(rec X . &{a: X, done: end} || rec Y . &{c: Y, stop: end})`` — 2×2."""
+    """``(rec X . &{a: X, done: end} || rec Y . &{c: Y, stop: end})`` — 2x2."""
 
     def setup_method(self) -> None:
         src = "(rec X . &{a: X, done: end} || rec Y . &{c: Y, stop: end})"
@@ -335,31 +335,31 @@ class TestMeetJoinAPI:
 
     def test_meet_top_with_anything(self) -> None:
         """Meet(top, x) = x for any x (top is the greatest element)."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         for s in ss.states:
             assert compute_meet(ss, ss.top, s) == s
 
     def test_join_bottom_with_anything(self) -> None:
         """Join(bottom, x) = x for any x (bottom is the least element)."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         for s in ss.states:
             assert compute_join(ss, ss.bottom, s) == s
 
     def test_meet_bottom_with_anything(self) -> None:
         """Meet(bottom, x) = bottom for any x."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         for s in ss.states:
             assert compute_meet(ss, ss.bottom, s) == ss.bottom
 
     def test_join_top_with_anything(self) -> None:
         """Join(top, x) = top for any x."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         for s in ss.states:
             assert compute_join(ss, ss.top, s) == ss.top
 
     def test_meet_in_chain(self) -> None:
         """In a chain a > b > end, meet(a, b) = b (the lower one)."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         tr = {l: t for s, l, t in ss.transitions if s == ss.top}
         mid = tr["a"]
         assert compute_meet(ss, ss.top, mid) == mid
@@ -367,7 +367,7 @@ class TestMeetJoinAPI:
 
     def test_join_in_chain(self) -> None:
         """In a chain a > b > end, join(a, b) = a (the higher one)."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         tr = {l: t for s, l, t in ss.transitions if s == ss.top}
         mid = tr["a"]
         assert compute_join(ss, ss.top, mid) == ss.top
@@ -410,7 +410,7 @@ class TestSCCMap:
 
     def test_end_separate_scc(self) -> None:
         """End state is always in its own SCC (no outgoing edges)."""
-        ss = _ss("a . b . end")
+        ss = _ss("&{a: &{b: end}}")
         r = check_lattice(ss)
         assert r.scc_map[ss.bottom] == ss.bottom
 
@@ -420,18 +420,18 @@ class TestSCCMap:
 # ===================================================================
 
 class TestSpecSharedFile:
-    """SharedFile protocol from spec §3.2:
+    """SharedFile protocol from spec S3.2:
 
-    ``init . &{open: +{OK: (read . end || write . end) . close . end, ERROR: end}}``
+    ``&{init: &{open: +{OK: (&{read: wait} || &{write: wait}) . &{close: end}, ERROR: end}}}``
     """
 
     def test_is_lattice(self) -> None:
-        src = "init . &{open: +{OK: (read . end || write . end) . close . end, ERROR: end}}"
+        src = "&{init: &{open: +{OK: (&{read: wait} || &{write: wait}) . &{close: end}, ERROR: end}}}"
         r = _check(src)
         assert r.is_lattice is True
 
     def test_has_all_properties(self) -> None:
-        src = "init . &{open: +{OK: (read . end || write . end) . close . end, ERROR: end}}"
+        src = "&{init: &{open: +{OK: (&{read: wait} || &{write: wait}) . &{close: end}, ERROR: end}}}"
         r = _check(src)
         assert r.has_top is True
         assert r.has_bottom is True
@@ -442,13 +442,13 @@ class TestSpecSharedFile:
 class TestSpecConcurrentFileRecursive:
     """Concurrent file with recursive branches:
 
-    ``open . (rec X . &{read: X, doneReading: end} || rec Y . &{write: Y, doneWriting: end}) . close . end``
+    ``&{open: (rec X . &{read: X, doneReading: wait} || rec Y . &{write: Y, doneWriting: wait}) . &{close: end}}``
     """
 
     def test_is_lattice(self) -> None:
         src = (
-            "open . (rec X . &{read: X, doneReading: end} "
-            "|| rec Y . &{write: Y, doneWriting: end}) . close . end"
+            "&{open: (rec X . &{read: X, doneReading: wait} "
+            "|| rec Y . &{write: Y, doneWriting: wait}) . &{close: end}}"
         )
         r = _check(src)
         assert r.is_lattice is True
@@ -460,20 +460,20 @@ class TestSpecConcurrentFileRecursive:
 
 class TestEdgeCases:
     def test_single_method(self) -> None:
-        """``a . end`` — two-element chain."""
-        r = _check("a . end")
+        """``&{a: end}`` — two-element chain."""
+        r = _check("&{a: end}")
         assert r.is_lattice is True
         assert r.num_scc == 2
 
     def test_long_chain(self) -> None:
-        """``a . b . c . d . e . end`` — 6-element chain."""
-        r = _check("a . b . c . d . e . end")
+        """``&{a: &{b: &{c: &{d: &{e: end}}}}}`` — 6-element chain."""
+        r = _check("&{a: &{b: &{c: &{d: &{e: end}}}}}")
         assert r.is_lattice is True
         assert r.num_scc == 6
 
     def test_select_diamond(self) -> None:
-        """``+{OK: a . end, ERR: b . end}`` — diamond with select."""
-        r = _check("+{OK: a . end, ERR: b . end}")
+        """``+{OK: &{a: end}, ERR: &{b: end}}`` — diamond with select."""
+        r = _check("+{OK: &{a: end}, ERR: &{b: end}}")
         assert r.is_lattice is True
         assert r.num_scc == 4
 
