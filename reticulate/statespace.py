@@ -14,13 +14,14 @@ from dataclasses import dataclass, field
 
 from reticulate.parser import (
     Branch,
+    Continuation,
     End,
     Parallel,
     Rec,
     Select,
-    Sequence,
     SessionType,
     Var,
+    Wait,
 )
 from reticulate.product import product_statespace
 
@@ -88,9 +89,10 @@ class StateSpace:
 def build_statespace(session_type: SessionType) -> StateSpace:
     """Construct the labeled transition system for a session type.
 
-    Handles all constructors: ``End``, ``Var``, ``Branch``, ``Select``,
-    ``Rec`` (with cycles), ``Sequence`` (chaining), and ``Parallel``
-    (product construction via :func:`product_statespace`).
+    Handles all constructors: ``End``, ``Wait``, ``Var``, ``Branch``,
+    ``Select``, ``Rec`` (with cycles), ``Continuation`` (chaining after
+    parallel), and ``Parallel`` (product construction via
+    :func:`product_statespace`).
 
     Raises ``ValueError`` on unbound type variables.
     """
@@ -152,6 +154,12 @@ class _Builder:
             case End():
                 return end_id
 
+            case Wait():
+                # Wait is semantically terminal (like End) at the
+                # state-space level.  The distinction between wait
+                # and end is enforced by well-formedness checking.
+                return end_id
+
             case Var(name=name):
                 if name not in env:
                     raise ValueError(f"unbound type variable: {name!r}")
@@ -190,8 +198,8 @@ class _Builder:
                     return body_entry
                 return placeholder
 
-            case Sequence(left=left, right=right):
-                # Build right side first; left's "end" chains to right's entry.
+            case Continuation(left=left, right=right):
+                # Build right side first; left's bottom chains to right's entry.
                 right_entry = self._build(right, env, end_id)
                 left_entry = self._build(left, env, right_entry)
                 return left_entry

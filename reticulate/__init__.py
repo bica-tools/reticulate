@@ -17,6 +17,7 @@ from reticulate.morphism import (
 )
 from reticulate.parser import (
     Branch,
+    Continuation,
     End,
     Parallel,
     ParseError,
@@ -25,6 +26,7 @@ from reticulate.parser import (
     Sequence,
     SessionType,
     Var,
+    Wait,
     parse,
     pretty,
     tokenize,
@@ -52,6 +54,7 @@ from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
     "Branch",
+    "Continuation",
     "End",
     "GaloisConnection",
     "LatticeResult",
@@ -71,6 +74,7 @@ __all__ = [
     "TestGenConfig",
     "enumerate_client_programs",
     "Var",
+    "Wait",
     "WFParallelResult",
     "build_statespace",
     "check_lattice",

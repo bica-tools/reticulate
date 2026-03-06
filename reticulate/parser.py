@@ -1,49 +1,30 @@
 """Session type parser: AST nodes, tokenizer, recursive-descent parser, pretty-printer.
 
-Grammar
--------
+Core Grammar
+------------
 
 ::
 
     S  ::=  &{ m₁ : S₁ , … , mₙ : Sₙ }    -- branch (external choice)
          |  +{ l₁ : S₁ , … , lₙ : Sₙ }    -- selection (internal choice)
-         |  S₁ || S₂                        -- parallel
-         |  S₁ . S₂                          -- sequencing
+         |  S₁ || S₂                        -- parallel composition
+         |  S₁ . S₂                          -- continuation (after parallel)
          |  rec X . S                        -- recursion
          |  ( S )                            -- grouping
          |  X                                -- type variable
-         |  end                              -- terminated
+         |  end                              -- session terminated
+         |  wait                             -- parallel branch completed
+
+Every construct has exactly one meaning.  There are no desugaring rules.
 
 Precedence (tightest first): ``.`` > ``||``.
 
-Desugaring
-~~~~~~~~~~
-When the left-hand side of ``.`` is a bare identifier, the parser desugars
-it into a single-method ``Branch``::
+Continuation (``.``) is exclusively paired with parallel: the left operand
+of ``.`` must be a parallel composition (possibly parenthesised).
 
-    ident . S   →   Branch(((ident, S),))
-
-This means ``a . b . end`` is equivalent to ``&{a: &{b: end}}``: plain
-method sequencing *is* branch with one arm.
-
-Why ``Sequence`` exists
-~~~~~~~~~~~~~~~~~~~~~~~
-Given the desugaring above, one might ask whether ``Sequence`` is redundant.
-It is not.  The desugaring only applies when the left operand is a bare
-identifier (a method name).  When a *compound* expression appears on the
-left of ``.``, there is no method name to form a ``Branch`` from, so the
-parser produces a ``Sequence`` node instead.
-
-The canonical case is a parallel block followed by a continuation::
-
-    (read . end || write . end) . close . end
-
-Here the parallel fork-join must complete before ``close`` can be called.
-There is no single method name for the left side — it is a full ``Parallel``
-sub-expression — so ``Sequence(Parallel(…), Branch(("close", End())))`` is
-the only faithful representation.  7 of the 34 benchmark protocols rely on
-this pattern (File Channel, Reticulate Pipeline, GitHub CI Workflow,
-MQTT Client, Saga Orchestrator, Leader Replication, Ion Channel Na+/K+).
+``wait`` signals branch synchronisation inside parallel and is only valid
+inside a ``||`` scope.  ``end`` signals final session termination and
+nothing may follow it.
 """
 
 from __future__ import annotations
@@ -59,7 +40,12 @@ from typing import Union
 
 @dataclass(frozen=True)
 class End:
-    """Terminated session."""
+    """Terminated session — no further method calls permitted."""
+
+
+@dataclass(frozen=True)
+class Wait:
+    """Parallel branch completed — synchronise before continuation."""
 
 
 @dataclass(frozen=True)
@@ -95,20 +81,22 @@ class Rec:
 
 
 @dataclass(frozen=True)
-class Sequence:
-    """Sequential composition ``S₁ . S₂`` for compound left-hand sides.
+class Continuation:
+    """Continuation after parallel ``(S₁ || S₂) . S₃``.
 
-    When the left operand of ``.`` is a bare identifier, the parser desugars
-    it to a single-method ``Branch`` (so ``a . S`` becomes ``&{a: S}``).
-    ``Sequence`` is produced only when the left operand is a compound
-    expression with no method name to branch on — typically a ``Parallel``
-    block followed by a continuation, e.g. ``(S₁ || S₂) . close . end``.
+    The left operand is always a ``Parallel`` node.  The right operand
+    is the continuation that executes after both parallel branches
+    reach ``wait`` and synchronise.
     """
     left: "SessionType"
     right: "SessionType"
 
 
-SessionType = Union[End, Var, Branch, Select, Parallel, Rec, Sequence]
+# Keep Sequence as an alias for backward compatibility during migration
+Sequence = Continuation
+
+
+SessionType = Union[End, Wait, Var, Branch, Select, Parallel, Rec, Continuation]
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +114,7 @@ class TokenKind(Enum):
     COMMA = auto()     # ,
     DOT = auto()       # .
     PAR = auto()       # ||
-    IDENT = auto()     # identifier or keyword (end, rec)
+    IDENT = auto()     # identifier or keyword (end, wait, rec)
     EOF = auto()
 
 
@@ -248,7 +236,7 @@ class _Parser:
     # -- grammar rules -------------------------------------------------------
 
     def parse(self) -> SessionType:
-        result = self._seq_expr()
+        result = self._par_expr()
         if self._peek().kind is not TokenKind.EOF:
             tok = self._peek()
             raise ParseError(
@@ -257,40 +245,28 @@ class _Parser:
             )
         return result
 
-    def _seq_expr(self) -> SessionType:
-        """Parse a sequence expression (right-associative ``.`` and ``||`` operators).
+    def _par_expr(self) -> SessionType:
+        """Parse parallel (lowest precedence, right-associative)."""
+        left = self._cont_expr()
 
-        If the left operand is a bare identifier we desugar ``ident . S``
-        to ``Branch(((ident, S),))``.  Otherwise we produce a ``Sequence``
-        node.
-
-        ``||`` binds looser than ``.`` — ``a.b || c.d`` means ``(a.b) || (c.d)``.
-        """
-        left = self._dot_expr()
-
-        # Infix || (parallel) — no parentheses required
         if self._peek().kind is TokenKind.PAR:
             self._advance()  # consume '||'
-            right = self._seq_expr()  # right-associative
+            right = self._par_expr()  # right-associative
             return Parallel(left, right)
 
         return left
 
-    def _dot_expr(self) -> SessionType:
-        """Parse dot-sequencing (right-associative ``.`` operator).
+    def _cont_expr(self) -> SessionType:
+        """Parse continuation ``.`` (binds tighter than ``||``).
 
-        Binds tighter than ``||``.
+        The left operand of ``.`` must be a Parallel (possibly via parens).
         """
         left = self._atom()
 
         if self._peek().kind is TokenKind.DOT:
             self._advance()  # consume '.'
-            right = self._dot_expr()  # right-associative
-
-            # Desugaring: bare identifier becomes single-method Branch
-            if isinstance(left, Var):
-                return Branch(((left.name, right),))
-            return Sequence(left, right)
+            right = self._cont_expr()  # right-associative
+            return Continuation(left, right)
 
         return left
 
@@ -319,7 +295,12 @@ class _Parser:
             self._advance()
             return End()
 
-        # plain identifier (type variable or method name)
+        # wait
+        if tok.kind is TokenKind.IDENT and tok.value == "wait":
+            self._advance()
+            return Wait()
+
+        # plain identifier (type variable)
         if tok.kind is TokenKind.IDENT:
             self._advance()
             return Var(tok.value)
@@ -334,7 +315,7 @@ class _Parser:
         while True:
             label_tok = self._expect(TokenKind.IDENT, f"{context} label")
             self._expect(TokenKind.COLON, f"{context} colon after {label_tok.value!r}")
-            body = self._seq_expr()
+            body = self._par_expr()
             entries.append((label_tok.value, body))
             if self._peek().kind is TokenKind.COMMA:
                 self._advance()
@@ -363,20 +344,20 @@ class _Parser:
     def _paren(self) -> SessionType:
         """Parse a parenthesized expression ``( S )``."""
         self._advance()  # consume '('
-        inner = self._seq_expr()
+        inner = self._par_expr()
         self._expect(TokenKind.RPAREN, "closing ')'")
         return inner
 
     def _rec(self) -> Rec:
         self._advance()  # consume 'rec'
         var_tok = self._expect(TokenKind.IDENT, "recursion variable")
-        if var_tok.value in ("rec", "end"):
+        if var_tok.value in ("rec", "end", "wait"):
             raise ParseError(
                 f"{var_tok.value!r} is a keyword, not a valid variable name",
                 var_tok.pos,
             )
         self._expect(TokenKind.DOT, "recursion dot")
-        body = self._dot_expr()
+        body = self._atom()
         return Rec(var_tok.value, body)
 
 
@@ -389,7 +370,7 @@ def parse(source: str) -> SessionType:
 
         >>> parse("end")
         End()
-        >>> parse("m . end")
+        >>> parse("&{m: end}")
         Branch(choices=(('m', End()),))
     """
     tokens = tokenize(source)
@@ -403,7 +384,6 @@ def parse(source: str) -> SessionType:
 def pretty(node: SessionType) -> str:
     """Render an AST back to a human-readable session-type string.
 
-    Single-element ``Branch`` is printed as sequencing sugar (``m . S``).
     Parentheses are added around ``||`` only when needed for correct
     precedence (inside ``.`` or ``rec``).
     """
@@ -414,17 +394,16 @@ def _pretty(node: SessionType, *, in_tight: bool) -> str:
     """Internal pretty-printer.
 
     *in_tight* is ``True`` when we are inside a context that binds tighter
-    than ``||`` (i.e. inside ``.`` sequencing or ``rec`` body).  In that
+    than ``||`` (i.e. inside ``.`` continuation or ``rec`` body).  In that
     case a ``Parallel`` node needs parentheses to roundtrip correctly.
     """
     match node:
         case End():
             return "end"
+        case Wait():
+            return "wait"
         case Var(name=name):
             return name
-        case Branch(choices=choices) if len(choices) == 1:
-            label, body = choices[0]
-            return f"{label} . {_pretty(body, in_tight=True)}"
         case Branch(choices=choices):
             inner = ", ".join(
                 f"{label}: {_pretty(body, in_tight=False)}"
@@ -442,7 +421,7 @@ def _pretty(node: SessionType, *, in_tight: bool) -> str:
             return f"({s})" if in_tight else s
         case Rec(var=var, body=body):
             return f"rec {var} . {_pretty(body, in_tight=True)}"
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             return f"{_pretty(left, in_tight=True)} . {_pretty(right, in_tight=True)}"
         case _:
             raise TypeError(f"unknown AST node: {type(node).__name__}")

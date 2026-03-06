@@ -20,13 +20,14 @@ from dataclasses import dataclass
 
 from reticulate.parser import (
     Branch,
+    Continuation,
     End,
     Parallel,
     Rec,
     Select,
-    Sequence,
     SessionType,
     Var,
+    Wait,
 )
 
 
@@ -100,7 +101,7 @@ def _has_exit_path(node: SessionType, forbidden: str) -> bool:
     This is the decidable termination check from spec §2.3.3.
     """
     match node:
-        case End():
+        case End() | Wait():
             return True
         case Var(name=name):
             # An occurrence of the forbidden var is NOT an exit;
@@ -111,7 +112,7 @@ def _has_exit_path(node: SessionType, forbidden: str) -> bool:
             return any(_has_exit_path(body, forbidden) for _, body in choices)
         case Select(choices=choices):
             return any(_has_exit_path(body, forbidden) for _, body in choices)
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             return _has_exit_path(left, forbidden) and _has_exit_path(right, forbidden)
         case Parallel(left=left, right=right):
             return _has_exit_path(left, forbidden) and _has_exit_path(right, forbidden)
@@ -134,7 +135,7 @@ def _collect_non_terminating(node: SessionType) -> list[str]:
 def _walk_for_termination(node: SessionType, acc: list[str]) -> None:
     """Recursive AST walker that populates *acc* with non-terminating var names."""
     match node:
-        case End() | Var():
+        case End() | Wait() | Var():
             pass
         case Branch(choices=choices):
             for _, body in choices:
@@ -142,7 +143,7 @@ def _walk_for_termination(node: SessionType, acc: list[str]) -> None:
         case Select(choices=choices):
             for _, body in choices:
                 _walk_for_termination(body, acc)
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             _walk_for_termination(left, acc)
             _walk_for_termination(right, acc)
         case Parallel(left=left, right=right):
@@ -171,7 +172,7 @@ def _collect_wf_par_errors(node: SessionType) -> list[str]:
 def _walk_for_wf_par(node: SessionType, errors: list[str]) -> None:
     """Recursive walker that checks WF-Par at each ``Parallel`` node."""
     match node:
-        case End() | Var():
+        case End() | Wait() | Var():
             pass
         case Branch(choices=choices):
             for _, body in choices:
@@ -179,7 +180,7 @@ def _walk_for_wf_par(node: SessionType, errors: list[str]) -> None:
         case Select(choices=choices):
             for _, body in choices:
                 _walk_for_wf_par(body, errors)
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             _walk_for_wf_par(left, errors)
             _walk_for_wf_par(right, errors)
         case Parallel(left=left, right=right):
@@ -248,7 +249,7 @@ def _check_wf_par_node(
 def _free_vars(node: SessionType) -> set[str]:
     """Compute the set of free type variables in *node*."""
     match node:
-        case End():
+        case End() | Wait():
             return set()
         case Var(name=name):
             return {name}
@@ -262,7 +263,7 @@ def _free_vars(node: SessionType) -> set[str]:
             for _, body in choices:
                 result |= _free_vars(body)
             return result
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             return _free_vars(left) | _free_vars(right)
         case Parallel(left=left, right=right):
             return _free_vars(left) | _free_vars(right)
@@ -276,7 +277,7 @@ def _bound_vars(node: SessionType) -> set[str]:
     """Compute the set of bound type variables in *node*
     (variables that appear as the binding variable of some ``Rec``)."""
     match node:
-        case End() | Var():
+        case End() | Wait() | Var():
             return set()
         case Branch(choices=choices):
             result: set[str] = set()
@@ -288,7 +289,7 @@ def _bound_vars(node: SessionType) -> set[str]:
             for _, body in choices:
                 result |= _bound_vars(body)
             return result
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             return _bound_vars(left) | _bound_vars(right)
         case Parallel(left=left, right=right):
             return _bound_vars(left) | _bound_vars(right)
@@ -301,13 +302,13 @@ def _bound_vars(node: SessionType) -> set[str]:
 def _contains_parallel(node: SessionType) -> bool:
     """Return True iff *node* contains a ``Parallel`` node anywhere."""
     match node:
-        case End() | Var():
+        case End() | Wait() | Var():
             return False
         case Branch(choices=choices):
             return any(_contains_parallel(body) for _, body in choices)
         case Select(choices=choices):
             return any(_contains_parallel(body) for _, body in choices)
-        case Sequence(left=left, right=right):
+        case Continuation(left=left, right=right):
             return _contains_parallel(left) or _contains_parallel(right)
         case Parallel():
             return True

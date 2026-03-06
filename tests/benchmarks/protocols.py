@@ -1,8 +1,8 @@
 """Benchmark protocol definitions for the reticulate test suite.
 
-34 real-world and classic protocols expressed as session types, covering
-all constructors: branch (&), selection (+), parallel (||), recursion (rec),
-and sequencing (.).
+34 real-world and classic protocols expressed as session types using the
+core grammar: branch (&), selection (+), parallel (||), recursion (rec),
+continuation (.), wait, and end.  No sequencing sugar.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     # 2. File Object
     BenchmarkProtocol(
         name="File Object",
-        type_string="open . rec X . &{read: +{data: X, eof: close . end}}",
+        type_string="&{open: rec X . &{read: +{data: X, eof: &{close: end}}}}",
         description=(
             "A file handle: open, then repeatedly read until EOF, then close. "
             "Models the classic open/read/close lifecycle."
@@ -54,8 +54,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="SMTP",
         type_string=(
-            "connect . ehlo . rec X . &{mail: rcpt . data . "
-            "+{OK: X, ERR: X}, quit: end}"
+            "&{connect: &{ehlo: rec X . &{mail: &{rcpt: &{data: "
+            "+{OK: X, ERR: X}}}, quit: end}}}"
         ),
         description=(
             "Simplified SMTP session: connect, EHLO, then loop sending mail "
@@ -70,8 +70,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="HTTP Connection",
         type_string=(
-            "connect . rec X . &{request: +{OK200: readBody . X, "
-            "ERR4xx: X, ERR5xx: X}, close: end}"
+            "&{connect: rec X . &{request: +{OK200: &{readBody: X}, "
+            "ERR4xx: X, ERR5xx: X}, close: end}}"
         ),
         description=(
             "A persistent HTTP connection: connect, then repeatedly send "
@@ -86,9 +86,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="OAuth 2.0",
         type_string=(
-            "requestAuth . +{GRANTED: getToken . +{TOKEN: rec X . "
+            "&{requestAuth: +{GRANTED: &{getToken: +{TOKEN: rec X . "
             "&{useToken: X, refreshToken: +{OK: X, EXPIRED: end}, "
-            "revoke: end}, ERROR: end}, DENIED: end}"
+            "revoke: end}, ERROR: end}}, DENIED: end}}"
         ),
         description=(
             "OAuth 2.0 authorization code flow: request authorization, "
@@ -103,8 +103,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Two-Buyer",
         type_string=(
-            "lookup . getPrice . (proposeA . end || "
-            "proposeB . +{ACCEPT: pay . end, REJECT: end})"
+            "&{lookup: &{getPrice: (&{proposeA: end} || "
+            "&{proposeB: +{ACCEPT: &{pay: end}, REJECT: end}})}}"
         ),
         description=(
             "The two-buyer protocol: lookup an item, get price, then two "
@@ -119,9 +119,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="MCP",
         type_string=(
-            "initialize . (rec X . &{callTool: +{RESULT: X, ERROR: X}, "
+            "&{initialize: (rec X . &{callTool: +{RESULT: X, ERROR: X}, "
             "listTools: X, shutdown: end} || "
-            "rec Y . +{NOTIFICATION: Y, DONE: end})"
+            "rec Y . +{NOTIFICATION: Y, DONE: end})}"
         ),
         description=(
             "AI agent Model Context Protocol: initialize, then concurrently "
@@ -136,8 +136,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="A2A",
         type_string=(
-            "sendTask . rec X . +{WORKING: &{getStatus: X, cancel: end}, "
-            "COMPLETED: getArtifact . end, FAILED: end}"
+            "&{sendTask: rec X . +{WORKING: &{getStatus: X, cancel: end}, "
+            "COMPLETED: &{getArtifact: end}, FAILED: end}}"
         ),
         description=(
             "Google's Agent-to-Agent protocol: send a task, then poll for "
@@ -152,8 +152,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="File Channel",
         type_string=(
-            "open . +{OK: (rec X . &{read: X, doneRead: end} || "
-            "rec Y . &{write: Y, doneWrite: end}) . close . end, ERR: end}"
+            "&{open: +{OK: (rec X . &{read: X, doneRead: wait} || "
+            "rec Y . &{write: Y, doneWrite: wait}) . &{close: end}, ERR: end}}"
         ),
         description=(
             "A file channel with concurrent read/write streams: open, then "
@@ -168,9 +168,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="ATM",
         type_string=(
-            "insertCard . enterPIN . +{AUTH: rec X . "
+            "&{insertCard: &{enterPIN: +{AUTH: rec X . "
             "&{checkBalance: X, withdraw: +{OK: X, INSUFFICIENT: X}, "
-            "deposit: X, ejectCard: end}, REJECTED: ejectCard . end}"
+            "deposit: X, ejectCard: end}, REJECTED: &{ejectCard: end}}}}"
         ),
         description=(
             "An ATM session: insert card, enter PIN, authenticate, then "
@@ -201,9 +201,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="WebSocket",
         type_string=(
-            "connect . +{OPEN: (rec X . &{send: X, ping: X, "
+            "&{connect: +{OPEN: (rec X . &{send: X, ping: X, "
             "closeSend: end} || rec Y . +{MESSAGE: Y, PONG: Y, "
-            "CLOSE: end}), REFUSED: end}"
+            "CLOSE: end}), REFUSED: end}}"
         ),
         description=(
             "A WebSocket connection: connect, then if open, concurrently "
@@ -218,8 +218,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="DB Transaction",
         type_string=(
-            "begin . rec X . &{query: +{RESULT: X, ERROR: X}, "
-            "update: +{ROWS: X, ERROR: X}, commit: end, rollback: end}"
+            "&{begin: rec X . &{query: +{RESULT: X, ERROR: X}, "
+            "update: +{ROWS: X, ERROR: X}, commit: end, rollback: end}}"
         ),
         description=(
             "A database transaction: begin, then repeatedly query or update "
@@ -234,8 +234,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Pub/Sub",
         type_string=(
-            "connect . rec X . &{subscribe: X, unsubscribe: X, "
-            "poll: +{MSG: X, EMPTY: X}, disconnect: end}"
+            "&{connect: rec X . &{subscribe: X, unsubscribe: X, "
+            "poll: +{MSG: X, EMPTY: X}, disconnect: end}}"
         ),
         description=(
             "A publish/subscribe client: connect, then subscribe, "
@@ -267,10 +267,10 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Reticulate Pipeline",
         type_string=(
-            "input . parse . +{OK: buildStateSpace . +{OK: "
-            "(checkLattice . checkTermination . checkWFPar . end "
-            "|| renderDiagram . end) . returnResult . end, "
-            "ERROR: end}, ERROR: end}"
+            "&{input: &{parse: +{OK: &{buildStateSpace: +{OK: "
+            "(&{checkLattice: &{checkTermination: &{checkWFPar: wait}}} "
+            "|| &{renderDiagram: wait}) . &{returnResult: end}, "
+            "ERROR: end}}, ERROR: end}}}"
         ),
         description=(
             "The reticulate web demo's own analysis pipeline as a session type. "
@@ -286,9 +286,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="GitHub CI Workflow",
         type_string=(
-            "trigger . checkout . setup . "
-            "(lint . end || test . end) . "
-            "+{PASS: deploy . +{OK: end, FAIL: rollback . end}, FAIL: end}"
+            "&{trigger: &{checkout: &{setup: "
+            "(&{lint: wait} || &{test: wait}) . "
+            "+{PASS: &{deploy: +{OK: end, FAIL: &{rollback: end}}}, FAIL: end}}}}"
         ),
         description=(
             "A GitHub Actions CI/CD pipeline: trigger, checkout, setup, then "
@@ -304,11 +304,11 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="TLS Handshake",
         type_string=(
-            "clientHello . +{HELLO_RETRY: clientHello . serverHello . "
-            "&{certificate: verify . changeCipher . end, "
-            "psk: changeCipher . end}, "
-            "SERVER_HELLO: &{certificate: verify . changeCipher . end, "
-            "psk: changeCipher . end}}"
+            "&{clientHello: +{HELLO_RETRY: &{clientHello: &{serverHello: "
+            "&{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}, "
+            "SERVER_HELLO: &{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}"
         ),
         description=(
             "A TLS 1.3 handshake: client hello with possible hello retry, "
@@ -323,9 +323,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Raft Leader Election",
         type_string=(
-            "rec X . +{TIMEOUT: requestVote . +{ELECTED: rec Y . "
+            "rec X . +{TIMEOUT: &{requestVote: +{ELECTED: rec Y . "
             "&{appendEntries: +{ACK: Y, NACK: Y}, heartbeatTimeout: Y, "
-            "stepDown: X}, REJECTED: X}, HEARTBEAT: X, SHUTDOWN: end}"
+            "stepDown: X}, REJECTED: X}}, HEARTBEAT: X, SHUTDOWN: end}"
         ),
         description=(
             "Raft consensus leader election: followers timeout, request votes, "
@@ -340,9 +340,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="MQTT Client",
         type_string=(
-            "connect . +{CONNACK: (rec X . &{publish: +{PUBACK: X, "
-            "TIMEOUT: X}, disconnect: end} || rec Y . +{MESSAGE: Y, "
-            "SUBACK: Y, DONE: end}) . end, REFUSED: end}"
+            "&{connect: +{CONNACK: (rec X . &{publish: +{PUBACK: X, "
+            "TIMEOUT: X}, disconnect: wait} || rec Y . +{MESSAGE: Y, "
+            "SUBACK: Y, DONE: wait}) . end, REFUSED: end}}"
         ),
         description=(
             "An MQTT client session: connect, then if accepted, concurrently "
@@ -374,9 +374,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Connection Pool",
         type_string=(
-            "init . (rec X . &{acquire: use . release . X, drain: end} || "
+            "&{init: (rec X . &{acquire: &{use: &{release: X}}, drain: end} || "
             "rec Y . &{healthCheck: +{HEALTHY: Y, UNHEALTHY: Y}, "
-            "shutdown: end})"
+            "shutdown: end})}"
         ),
         description=(
             "A connection pool: initialize, then concurrently handle "
@@ -391,8 +391,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="gRPC BiDi Stream",
         type_string=(
-            "open . (rec X . &{send: X, halfClose: end} || "
-            "rec Y . +{RESPONSE: Y, TRAILER: end})"
+            "&{open: (rec X . &{send: X, halfClose: end} || "
+            "rec Y . +{RESPONSE: Y, TRAILER: end})}"
         ),
         description=(
             "A gRPC bidirectional streaming RPC: open, then concurrently "
@@ -407,8 +407,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Blockchain Tx",
         type_string=(
-            "createTx . sign . broadcast . rec X . +{PENDING: X, "
-            "CONFIRMED: &{getReceipt: end}, DROPPED: end, FAILED: end}"
+            "&{createTx: &{sign: &{broadcast: rec X . +{PENDING: X, "
+            "CONFIRMED: &{getReceipt: end}, DROPPED: end, FAILED: end}}}}"
         ),
         description=(
             "A blockchain transaction lifecycle: create, sign, broadcast, "
@@ -423,9 +423,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Kafka Consumer",
         type_string=(
-            "subscribe . (rec X . &{poll: +{RECORDS: process . commit . X, "
+            "&{subscribe: (rec X . &{poll: +{RECORDS: &{process: &{commit: X}}, "
             "EMPTY: X}, pause: end} || rec Y . +{REBALANCE: Y, "
-            "REVOKED: end})"
+            "REVOKED: end})}"
         ),
         description=(
             "A Kafka consumer: subscribe, then concurrently poll/process/commit "
@@ -441,7 +441,7 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         name="Rate Limiter",
         type_string=(
             "rec X . &{tryAcquire: +{ALLOWED: X, THROTTLED: "
-            "&{wait: X, abort: end}}, close: end}"
+            "&{wait_retry: X, abort: end}}, close: end}"
         ),
         description=(
             "A rate limiter: repeatedly try to acquire a permit (allowed loops, "
@@ -456,9 +456,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Saga Orchestrator",
         type_string=(
-            "begin . (step1 . +{OK: end, FAIL: compensate1 . end} || "
-            "step2 . +{OK: end, FAIL: compensate2 . end}) . "
-            "+{ALL_OK: commit . end, PARTIAL: rollback . end}"
+            "&{begin: (&{step1: +{OK: wait, FAIL: &{compensate1: wait}}} || "
+            "&{step2: +{OK: wait, FAIL: &{compensate2: wait}}}) . "
+            "+{ALL_OK: &{commit: end}, PARTIAL: &{rollback: end}}}"
         ),
         description=(
             "A saga orchestrator: begin, then run two steps concurrently "
@@ -473,8 +473,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Two-Phase Commit",
         type_string=(
-            "prepare . &{allYes: commit . +{ACK: end, TIMEOUT: abort . end}, "
-            "anyNo: abort . end}"
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
         ),
         description=(
             "Two-phase commit protocol: prepare, then either all vote yes "
@@ -489,9 +489,9 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Leader Replication",
         type_string=(
-            "electLeader . rec X . &{write: (replicate1 . +{ACK: end, "
-            "NACK: end} || replicate2 . +{ACK: end, NACK: end}) . "
-            "+{QUORUM: apply . X, NO_QUORUM: X}, stepDown: end}"
+            "&{electLeader: rec X . &{write: (&{replicate1: +{ACK: wait, "
+            "NACK: wait}} || &{replicate2: +{ACK: wait, NACK: wait}}) . "
+            "+{QUORUM: &{apply: X}, NO_QUORUM: X}, stepDown: end}}"
         ),
         description=(
             "Leader-based replication: elect leader, then repeatedly write "
@@ -506,8 +506,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Failover",
         type_string=(
-            "connect . rec X . &{request: +{OK: X, FAIL: reconnect . "
-            "+{UP: X, DOWN: end}}, close: end}"
+            "&{connect: rec X . &{request: +{OK: X, FAIL: &{reconnect: "
+            "+{UP: X, DOWN: end}}}, close: end}}"
         ),
         description=(
             "A failover protocol: connect, then repeatedly request (OK loops, "
@@ -522,7 +522,7 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Enzyme (Michaelis-Menten)",
         type_string=(
-            "rec X . &{bind_substrate: +{CATALYZE: release_product . X, "
+            "rec X . &{bind_substrate: +{CATALYZE: &{release_product: X}, "
             "DISSOCIATE: X}, shutdown: end}"
         ),
         description=(
@@ -539,7 +539,7 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Enzyme (Competitive Inhibition)",
         type_string=(
-            "rec X . &{bind_substrate: +{CATALYZE: release_product . X, "
+            "rec X . &{bind_substrate: +{CATALYZE: &{release_product: X}, "
             "DISSOCIATE: X}, bind_inhibitor: &{release_inhibitor: X}, "
             "shutdown: end}"
         ),
@@ -557,8 +557,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Ion Channel (Single)",
         type_string=(
-            "rec X . &{depolarize: +{OPEN: conduct_ions . +{INACTIVATE: "
-            "&{repolarize: X, permanent_inactivation: end}, CLOSE_DIRECT: X}, "
+            "rec X . &{depolarize: +{OPEN: &{conduct_ions: +{INACTIVATE: "
+            "&{repolarize: X, permanent_inactivation: end}, CLOSE_DIRECT: X}}, "
             "SUBTHRESHOLD: X}, shutdown: end}"
         ),
         description=(
@@ -576,8 +576,8 @@ BENCHMARKS: list[BenchmarkProtocol] = [
     BenchmarkProtocol(
         name="Ion Channel (Na+/K+ Parallel)",
         type_string=(
-            "rec X . &{depolarize: (conduct_Na . +{INACTIVATE_Na: end, "
-            "CLOSE_Na: end} || conduct_K . delayed_close_K . end) . "
+            "rec X . &{depolarize: (&{conduct_Na: +{INACTIVATE_Na: wait, "
+            "CLOSE_Na: wait}} || &{conduct_K: &{delayed_close_K: wait}}) . "
             "&{repolarize: X, permanent_inactivation: end}, shutdown: end}"
         ),
         description=(
