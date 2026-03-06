@@ -1,18 +1,30 @@
-"""Comprehensive tests for the session-type parser."""
+"""Comprehensive tests for the session-type parser.
+
+Updated for the core grammar (no sequencing sugar).  Every construct has
+exactly one meaning:
+
+- ``&{m: end}`` is a Branch (the only way to express a method call).
+- ``m`` alone is ``Var("m")``.
+- ``m . end`` is ``Continuation(Var("m"), End())``.
+- ``wait`` is ``Wait()`` (parallel branch completion).
+- ``(S1 || S2) . S3`` is ``Continuation(Parallel(S1, S2), S3)``.
+"""
 
 import pytest
 
 from reticulate.parser import (
     Branch,
+    Continuation,
     End,
     Parallel,
     ParseError,
     Rec,
     Select,
-    Sequence,
+    Sequence,       # backward-compat alias for Continuation
     Token,
     TokenKind,
     Var,
+    Wait,
     parse,
     pretty,
     tokenize,
@@ -46,9 +58,9 @@ class TestTokenizer:
         assert tokens[0].value == "||"
 
     def test_identifiers(self) -> None:
-        tokens = tokenize("end rec X foo_bar baz123")
+        tokens = tokenize("end rec X foo_bar baz123 wait")
         idents = [t.value for t in tokens if t.kind is TokenKind.IDENT]
-        assert idents == ["end", "rec", "X", "foo_bar", "baz123"]
+        assert idents == ["end", "rec", "X", "foo_bar", "baz123", "wait"]
 
     def test_positions(self) -> None:
         tokens = tokenize("a . b")
@@ -83,6 +95,10 @@ class TestASTNodes:
         assert hash(End()) == hash(End())
         assert End() == End()
 
+    def test_wait_hashable(self) -> None:
+        assert hash(Wait()) == hash(Wait())
+        assert Wait() == Wait()
+
     def test_var_hashable(self) -> None:
         assert hash(Var("X")) == hash(Var("X"))
         assert Var("X") != Var("Y")
@@ -91,9 +107,13 @@ class TestASTNodes:
         b = Branch((("m", End()),))
         assert hash(b) == hash(Branch((("m", End()),)))
 
+    def test_continuation_hashable(self) -> None:
+        c = Continuation(End(), Var("X"))
+        assert hash(c) == hash(Continuation(End(), Var("X")))
+
     def test_nodes_in_set(self) -> None:
-        s = {End(), End(), Var("X"), Var("X")}
-        assert len(s) == 2
+        s = {End(), End(), Var("X"), Var("X"), Wait(), Wait()}
+        assert len(s) == 3
 
     def test_frozen(self) -> None:
         with pytest.raises(AttributeError):
@@ -109,21 +129,43 @@ class TestASTNodes:
         b = Select((("m", End()),))
         assert a != b
 
+    def test_end_not_wait(self) -> None:
+        assert End() != Wait()
+
+    def test_sequence_alias(self) -> None:
+        """Sequence is an alias for Continuation."""
+        assert Sequence is Continuation
+        node = Sequence(End(), Var("X"))
+        assert isinstance(node, Continuation)
+        assert node == Continuation(End(), Var("X"))
+
 
 # ===================================================================
-# Parser — basic constructs
+# Parser -- basic constructs
 # ===================================================================
 
 class TestParserBasic:
     def test_end(self) -> None:
         assert parse("end") == End()
 
+    def test_wait(self) -> None:
+        assert parse("wait") == Wait()
+
     def test_variable(self) -> None:
         assert parse("X") == Var("X")
+
+    def test_bare_identifier_is_var(self) -> None:
+        """A bare identifier like ``m`` is Var("m"), NOT a Branch."""
+        assert parse("m") == Var("m")
 
     def test_branch(self) -> None:
         result = parse("&{m: end, n: end}")
         assert result == Branch((("m", End()), ("n", End())))
+
+    def test_single_branch(self) -> None:
+        """Single-method branch: ``&{m: end}``."""
+        result = parse("&{m: end}")
+        assert result == Branch((("m", End()),))
 
     def test_select(self) -> None:
         result = parse("+{OK: end, ERROR: end}")
@@ -134,16 +176,19 @@ class TestParserBasic:
         assert result == Parallel(End(), End())
 
     def test_parallel_bare_infix(self) -> None:
-        result = parse("a . end || b . end")
-        expected = Parallel(
-            Branch((("a", End()),)),
-            Branch((("b", End()),)),
-        )
+        """``X || Y`` at top level is Parallel(Var, Var)."""
+        result = parse("X || Y")
+        expected = Parallel(Var("X"), Var("Y"))
         assert result == expected
 
     def test_rec(self) -> None:
         result = parse("rec X . end")
         assert result == Rec("X", End())
+
+    def test_rec_body_is_atom(self) -> None:
+        """rec X . body — body is parsed at atom level."""
+        result = parse("rec X . &{m: end}")
+        assert result == Rec("X", Branch((("m", End()),)))
 
     def test_parenthesized_grouping(self) -> None:
         result = parse("(end)")
@@ -151,52 +196,118 @@ class TestParserBasic:
 
 
 # ===================================================================
-# Parser — sequencing and desugaring
+# Parser -- continuation construct
 # ===================================================================
 
-class TestSequencing:
-    def test_simple_method_call(self) -> None:
-        """``m . end`` desugars to ``Branch(((m, End),))``."""
-        result = parse("m . end")
-        assert result == Branch((("m", End()),))
+class TestContinuation:
+    def test_simple_continuation(self) -> None:
+        """``(end || end) . X`` is Continuation(Parallel(...), Var)."""
+        result = parse("(end || end) . X")
+        expected = Continuation(Parallel(End(), End()), Var("X"))
+        assert result == expected
 
-    def test_chained_methods(self) -> None:
-        """``a . b . end`` desugars right-associatively."""
+    def test_parallel_then_branch(self) -> None:
+        """``(X || Y) . &{m: end}``."""
+        result = parse("(X || Y) . &{m: end}")
+        expected = Continuation(
+            Parallel(Var("X"), Var("Y")),
+            Branch((("m", End()),)),
+        )
+        assert result == expected
+
+    def test_parallel_then_end(self) -> None:
+        """``(end || end) . end``."""
+        result = parse("(end || end) . end")
+        expected = Continuation(Parallel(End(), End()), End())
+        assert result == expected
+
+    def test_chained_continuation(self) -> None:
+        """``(X || Y) . (end || end) . Z`` -- right-associative."""
+        result = parse("(X || Y) . (end || end) . Z")
+        expected = Continuation(
+            Parallel(Var("X"), Var("Y")),
+            Continuation(Parallel(End(), End()), Var("Z")),
+        )
+        assert result == expected
+
+    def test_var_dot_var_is_continuation(self) -> None:
+        """``a . end`` is Continuation(Var("a"), End()), NOT a branch."""
+        result = parse("a . end")
+        expected = Continuation(Var("a"), End())
+        assert result == expected
+
+    def test_chained_var_dot_is_continuation(self) -> None:
+        """``a . b . end`` is nested Continuation."""
         result = parse("a . b . end")
-        assert result == Branch((("a", Branch((("b", End()),))),))
-
-    def test_method_then_branch(self) -> None:
-        """``init . &{m: end, n: end}``."""
-        result = parse("init . &{m: end, n: end}")
-        expected = Branch((("init", Branch((("m", End()), ("n", End())))),))
+        expected = Continuation(Var("a"), Continuation(Var("b"), End()))
         assert result == expected
 
-    def test_complex_left_becomes_sequence(self) -> None:
-        """``(a || b) . end`` — complex left becomes Sequence."""
-        result = parse("(a || b) . end")
-        expected = Sequence(Parallel(Var("a"), Var("b")), End())
+    def test_branch_then_continuation(self) -> None:
+        """``&{m: end} . &{n: end}`` is Continuation(Branch, Branch)."""
+        result = parse("&{m: end} . &{n: end}")
+        expected = Continuation(
+            Branch((("m", End()),)),
+            Branch((("n", End()),)),
+        )
         assert result == expected
 
-    def test_branch_then_method(self) -> None:
-        """``&{m: end} . close . end`` — Branch on left becomes Sequence."""
-        result = parse("&{m: end} . close . end")
-        expected = Sequence(Branch((("m", End()),)), Branch((("close", End()),)))
+    def test_continuation_dot_binds_tighter_than_par(self) -> None:
+        """Dot has higher precedence than ``||``."""
+        # a . end || b . end
+        result = parse("a . end || b . end")
+        expected = Parallel(
+            Continuation(Var("a"), End()),
+            Continuation(Var("b"), End()),
+        )
         assert result == expected
-
-    def test_rec_body_with_sequencing(self) -> None:
-        """``rec X . m . X`` — recursion body includes desugared seq."""
-        result = parse("rec X . m . X")
-        assert result == Rec("X", Branch((("m", Var("X")),)))
 
 
 # ===================================================================
-# Parser — complex / spec examples
+# Parser -- Wait keyword
+# ===================================================================
+
+class TestWait:
+    def test_wait_standalone(self) -> None:
+        assert parse("wait") == Wait()
+
+    def test_wait_in_branch(self) -> None:
+        result = parse("&{m: wait}")
+        assert result == Branch((("m", Wait()),))
+
+    def test_wait_in_parallel_branches(self) -> None:
+        """``(&{read: wait} || &{write: wait})``."""
+        result = parse("(&{read: wait} || &{write: wait})")
+        expected = Parallel(
+            Branch((("read", Wait()),)),
+            Branch((("write", Wait()),)),
+        )
+        assert result == expected
+
+    def test_wait_parallel_then_continuation(self) -> None:
+        """``(&{read: wait} || &{write: wait}) . &{close: end}``."""
+        result = parse("(&{read: wait} || &{write: wait}) . &{close: end}")
+        expected = Continuation(
+            Parallel(
+                Branch((("read", Wait()),)),
+                Branch((("write", Wait()),)),
+            ),
+            Branch((("close", End()),)),
+        )
+        assert result == expected
+
+    def test_wait_not_valid_as_rec_var(self) -> None:
+        with pytest.raises(ParseError, match="keyword"):
+            parse("rec wait . end")
+
+
+# ===================================================================
+# Parser -- complex / spec examples
 # ===================================================================
 
 class TestSpecExamples:
     def test_shared_file(self) -> None:
-        """SharedFile from spec §2.2: init . &{open: +{OK: use . close . end, ERROR: end}}"""
-        src = "init . &{open: +{OK: use . close . end, ERROR: end}}"
+        """SharedFile from spec: &{init: &{open: +{OK: &{use: &{close: end}}, ERROR: end}}}"""
+        src = "&{init: &{open: +{OK: &{use: &{close: end}}, ERROR: end}}}"
         result = parse(src)
         expected = Branch((
             ("init", Branch((
@@ -209,8 +320,8 @@ class TestSpecExamples:
         assert result == expected
 
     def test_concurrent_file_access(self) -> None:
-        """(read . end || write . end)"""
-        src = "(read . end || write . end)"
+        """(&{read: end} || &{write: end})"""
+        src = "(&{read: end} || &{write: end})"
         result = parse(src)
         expected = Parallel(
             Branch((("read", End()),)),
@@ -219,16 +330,18 @@ class TestSpecExamples:
         assert result == expected
 
     def test_full_shared_file(self) -> None:
-        """Full SharedFile: init . &{open: +{OK: (read.end || write.end) . close . end, ERROR: end}}"""
-        src = "init . &{open: +{OK: (read . end || write . end) . close . end, ERROR: end}}"
+        """Full SharedFile with parallel and wait:
+        &{init: &{open: +{OK: (&{read: wait} || &{write: wait}) . &{close: end}, ERROR: end}}}
+        """
+        src = "&{init: &{open: +{OK: (&{read: wait} || &{write: wait}) . &{close: end}, ERROR: end}}}"
         result = parse(src)
         expected = Branch((
             ("init", Branch((
                 ("open", Select((
-                    ("OK", Sequence(
+                    ("OK", Continuation(
                         Parallel(
-                            Branch((("read", End()),)),
-                            Branch((("write", End()),)),
+                            Branch((("read", Wait()),)),
+                            Branch((("write", Wait()),)),
                         ),
                         Branch((("close", End()),)),
                     )),
@@ -253,8 +366,8 @@ class TestSpecExamples:
         assert result == expected
 
     def test_parallel_inside_branch(self) -> None:
-        """&{go: (a . end || b . end), stop: end}"""
-        src = "&{go: (a . end || b . end), stop: end}"
+        """&{go: (&{a: end} || &{b: end}), stop: end}"""
+        src = "&{go: (&{a: end} || &{b: end}), stop: end}"
         result = parse(src)
         expected = Branch((
             ("go", Parallel(Branch((("a", End()),)), Branch((("b", End()),)))),
@@ -264,7 +377,7 @@ class TestSpecExamples:
 
 
 # ===================================================================
-# Parser — error handling
+# Parser -- error handling
 # ===================================================================
 
 class TestParserErrors:
@@ -308,9 +421,13 @@ class TestParserErrors:
         with pytest.raises(ParseError, match="keyword"):
             parse("rec end . end")
 
+    def test_wait_keyword_as_rec_variable(self) -> None:
+        with pytest.raises(ParseError, match="keyword"):
+            parse("rec wait . end")
+
     def test_dot_without_right_side(self) -> None:
         with pytest.raises(ParseError):
-            parse("m .")
+            parse("X .")
 
     def test_unexpected_token(self) -> None:
         with pytest.raises(ParseError):
@@ -318,7 +435,7 @@ class TestParserErrors:
 
     def test_error_has_position(self) -> None:
         try:
-            parse("m . }")
+            parse("X . }")
         except ParseError as e:
             assert e.pos is not None
             assert e.pos == 4  # position of '}'
@@ -332,12 +449,15 @@ class TestPrettyPrinter:
     def test_end(self) -> None:
         assert pretty(End()) == "end"
 
+    def test_wait(self) -> None:
+        assert pretty(Wait()) == "wait"
+
     def test_var(self) -> None:
         assert pretty(Var("X")) == "X"
 
-    def test_single_branch_as_sugar(self) -> None:
-        """Single-method Branch prints as sequencing sugar."""
-        assert pretty(Branch((("m", End()),))) == "m . end"
+    def test_single_branch(self) -> None:
+        """Single-method Branch prints as ``&{m: end}``, NOT sugar."""
+        assert pretty(Branch((("m", End()),))) == "&{m: end}"
 
     def test_multi_branch(self) -> None:
         node = Branch((("m", End()), ("n", Var("X"))))
@@ -355,21 +475,47 @@ class TestPrettyPrinter:
         node = Rec("X", Var("X"))
         assert pretty(node) == "rec X . X"
 
-    def test_sequence(self) -> None:
-        node = Sequence(Parallel(End(), End()), Var("X"))
+    def test_continuation(self) -> None:
+        node = Continuation(Parallel(End(), End()), Var("X"))
         assert pretty(node) == "(end || end) . X"
 
+    def test_continuation_parallel_parens(self) -> None:
+        """Parallel inside continuation gets parenthesized."""
+        node = Continuation(
+            Parallel(Var("a"), Var("b")),
+            Branch((("close", End()),)),
+        )
+        assert pretty(node) == "(a || b) . &{close: end}"
+
+    def test_rec_body_parallel_parens(self) -> None:
+        """Parallel as rec body gets parenthesized."""
+        node = Rec("X", Parallel(Var("X"), End()))
+        assert pretty(node) == "rec X . (X || end)"
+
     def test_roundtrip_simple(self) -> None:
-        """parse → pretty → parse is identity."""
+        """parse -> pretty -> parse is identity."""
         src = "rec X . &{next: X, close: end}"
         assert parse(pretty(parse(src))) == parse(src)
 
     def test_roundtrip_complex(self) -> None:
-        src = "init . &{open: +{OK: (read . end || write . end) . close . end, ERROR: end}}"
+        src = "&{init: &{open: +{OK: (&{read: wait} || &{write: wait}) . &{close: end}, ERROR: end}}}"
         assert parse(pretty(parse(src))) == parse(src)
 
     def test_roundtrip_parallel(self) -> None:
-        src = "(a . end || b . end)"
+        src = "(&{read: end} || &{write: end})"
+        assert parse(pretty(parse(src))) == parse(src)
+
+    def test_roundtrip_wait(self) -> None:
+        src = "(&{a: wait} || &{b: wait}) . end"
+        assert parse(pretty(parse(src))) == parse(src)
+
+    def test_roundtrip_var_continuation(self) -> None:
+        src = "a . b . end"
+        assert parse(pretty(parse(src))) == parse(src)
+
+    def test_roundtrip_branch_single(self) -> None:
+        """Single branch roundtrips via &{m: end} format."""
+        src = "&{m: end}"
         assert parse(pretty(parse(src))) == parse(src)
 
 
@@ -378,17 +524,26 @@ class TestPrettyPrinter:
 # ===================================================================
 
 class TestEdgeCases:
-    def test_deeply_nested(self) -> None:
-        """Deeply nested structure parses without stack overflow."""
-        # a . b . c . d . e . end
-        result = parse("a . b . c . d . e . end")
-        # Should be 5 layers of Branch
+    def test_deeply_nested_branches(self) -> None:
+        """Deeply nested explicit branches parse correctly."""
+        # &{a: &{b: &{c: &{d: &{e: end}}}}}
+        result = parse("&{a: &{b: &{c: &{d: &{e: end}}}}}")
         node = result
         for name in ("a", "b", "c", "d", "e"):
             assert isinstance(node, Branch)
             assert len(node.choices) == 1
             assert node.choices[0][0] == name
             node = node.choices[0][1]
+        assert node == End()
+
+    def test_deeply_nested_continuations(self) -> None:
+        """``a . b . c . d . e . end`` is nested Continuation(Var, ...)."""
+        result = parse("a . b . c . d . e . end")
+        node = result
+        for name in ("a", "b", "c", "d", "e"):
+            assert isinstance(node, Continuation)
+            assert node.left == Var(name)
+            node = node.right
         assert node == End()
 
     def test_whitespace_insensitive(self) -> None:
@@ -419,11 +574,44 @@ class TestEdgeCases:
         expected = Rec("X", Parallel(Var("X"), End()))
         assert result == expected
 
-    def test_select_with_sequencing_in_body(self) -> None:
-        src = "+{ok: m . n . end, err: end}"
+    def test_select_with_nested_branches(self) -> None:
+        """``+{ok: &{m: &{n: end}}, err: end}``."""
+        src = "+{ok: &{m: &{n: end}}, err: end}"
         result = parse(src)
         expected = Select((
             ("ok", Branch((("m", Branch((("n", End()),))),))),
             ("err", End()),
         ))
+        assert result == expected
+
+    def test_wait_in_both_parallel_branches(self) -> None:
+        """Both branches of parallel use wait, then continue."""
+        src = "(&{a: wait} || &{b: wait}) . &{c: end}"
+        result = parse(src)
+        expected = Continuation(
+            Parallel(
+                Branch((("a", Wait()),)),
+                Branch((("b", Wait()),)),
+            ),
+            Branch((("c", End()),)),
+        )
+        assert result == expected
+
+    def test_rec_body_is_atom_not_continuation(self) -> None:
+        """``rec X . X . end`` parses as Continuation(Rec(X, X), End()),
+        because rec body is atom-level (just X), then ``. end`` is continuation."""
+        result = parse("rec X . X . end")
+        expected = Continuation(Rec("X", Var("X")), End())
+        assert result == expected
+
+    def test_rec_body_branch_then_continuation(self) -> None:
+        """``rec X . &{m: X} . end`` -- rec body is &{m: X}, then . end."""
+        result = parse("rec X . &{m: X} . end")
+        expected = Continuation(Rec("X", Branch((("m", Var("X")),))), End())
+        assert result == expected
+
+    def test_parallel_of_wait(self) -> None:
+        """``(wait || wait)``."""
+        result = parse("(wait || wait)")
+        expected = Parallel(Wait(), Wait())
         assert result == expected
