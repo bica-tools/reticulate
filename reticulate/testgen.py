@@ -418,6 +418,7 @@ def generate_test_source(
         lines.append(f"package {config.package_name};\n")
 
     # Imports
+    lines.append("import com.bica.reborn.exception.ProtocolViolationException;")
     if testng:
         lines.append("import org.testng.annotations.Test;")
         lines.append("import static org.testng.Assert.*;")
@@ -466,7 +467,7 @@ def generate_test_source(
                   else "_".join(prefix_labels) + "_" + v.disabled_method)
         lines.append("")
         if testng:
-            lines.append("    @Test(expectedExceptions = IllegalStateException.class)")
+            lines.append("    @Test(expectedExceptions = ProtocolViolationException.class)")
         else:
             lines.append("    @Test")
         lines.append(f"    void violation_{suffix}() {{")
@@ -480,7 +481,7 @@ def generate_test_source(
             lines.append(f"        {config.var_name}.{v.disabled_method}();")
         else:
             lines.append(
-                f"        assertThrows(IllegalStateException.class, "
+                f"        assertThrows(ProtocolViolationException.class, "
                 f"() -> {config.var_name}.{v.disabled_method}());"
             )
         lines.append("    }")

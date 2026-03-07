@@ -209,12 +209,12 @@ class TestGenerate:
     def test_violations_section(self):
         out = gen("&{a: &{b: end}}")
         assert "Violations" in out
-        assert "assertThrows(IllegalStateException.class" in out
+        assert "assertThrows(ProtocolViolationException.class" in out
 
     def test_violation_uses_assert_throws(self):
         """Clean violations (no selections in prefix) use assertThrows."""
         out = gen("&{a: &{b: end}}")
-        assert "assertThrows(IllegalStateException.class, () -> obj." in out
+        assert "assertThrows(ProtocolViolationException.class, () -> obj." in out
         # No @Disabled on clean violations
         assert "@Disabled" not in out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
 
@@ -226,7 +226,7 @@ class TestGenerate:
         assert "@Disabled" not in violations_section
         # Selection steps are comments, violation uses assertThrows
         if "violation_" in violations_section:
-            assert "assertThrows(IllegalStateException.class" in violations_section
+            assert "assertThrows(ProtocolViolationException.class" in violations_section
 
     def test_assertions_import(self):
         """Generated source includes static Assertions import."""
@@ -510,7 +510,7 @@ class TestTestNGGenerate:
 
     def test_violation_uses_expected_exceptions(self):
         out = gen_testng("&{a: &{b: end}}")
-        assert "expectedExceptions = IllegalStateException.class" in out
+        assert "expectedExceptions = ProtocolViolationException.class" in out
 
     def test_violation_no_assert_throws(self):
         out = gen_testng("&{a: &{b: end}}")
