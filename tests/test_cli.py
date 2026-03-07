@@ -233,3 +233,33 @@ class TestModuleInvocation:
         )
         assert result.returncode == 1
         assert "Parse error" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# --test-gen and --framework
+# ---------------------------------------------------------------------------
+
+
+class TestTestGen:
+    def test_test_gen_default_junit(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--test-gen", "&{a: end}"], capsys)
+        assert "import org.junit.jupiter.api.Test;" in out
+        assert "class MyProtocolProtocolTest" in out
+
+    def test_test_gen_custom_class(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--test-gen", "--class-name", "FileHandle", "&{a: end}"], capsys)
+        assert "class FileHandleProtocolTest" in out
+
+    def test_test_gen_with_package(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--test-gen", "--package", "com.example", "end"], capsys)
+        assert "package com.example;" in out
+
+    def test_test_gen_testng(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--test-gen", "--framework", "testng", "&{a: end}"], capsys)
+        assert "import org.testng.annotations.Test;" in out
+        assert "junit" not in out
+
+    def test_test_gen_testng_violations(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--test-gen", "--framework", "testng", "&{a: &{b: end}}"], capsys)
+        assert "expectedExceptions" in out
+        assert "assertThrows" not in out

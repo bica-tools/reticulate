@@ -458,3 +458,96 @@ class TestGeneratedSwitchStatements:
     def test_valid_path_count_with_selection(self):
         out = gen("&{m: +{OK: end, ERR: end}}")
         assert "Valid paths (1)" in out
+
+
+# =========================================================================
+# TestNG framework support
+# =========================================================================
+
+
+def gen_testng(source: str, cfg: TestGenConfig | None = None) -> str:
+    ast = parse(source)
+    c = cfg or TestGenConfig("Obj", framework="testng")
+    return generate_test_source(build_statespace(ast), c, pretty(ast))
+
+
+class TestFrameworkConfig:
+    def test_default_is_junit(self):
+        c = TestGenConfig("Obj")
+        assert c.framework == "junit"
+
+    def test_testng_accepted(self):
+        c = TestGenConfig("Obj", framework="testng")
+        assert c.framework == "testng"
+
+    def test_invalid_framework_raises(self):
+        with pytest.raises(ValueError, match="Unknown test framework"):
+            TestGenConfig("Obj", framework="xunit")
+
+
+class TestTestNGGenerate:
+    def test_import_testng_test(self):
+        out = gen_testng("end")
+        assert "import org.testng.annotations.Test;" in out
+
+    def test_import_testng_assert(self):
+        out = gen_testng("end")
+        assert "import static org.testng.Assert.*;" in out
+
+    def test_no_junit_imports(self):
+        out = gen_testng("end")
+        assert "junit" not in out
+
+    def test_javadoc_mentions_testng(self):
+        out = gen_testng("end")
+        assert "TestNG" in out
+
+    def test_valid_path_same_structure(self):
+        out = gen_testng("&{a: &{b: end}}")
+        assert "validPath_a_b" in out
+        assert "obj.a();" in out
+        assert "obj.b();" in out
+
+    def test_violation_uses_expected_exceptions(self):
+        out = gen_testng("&{a: &{b: end}}")
+        assert "expectedExceptions = IllegalStateException.class" in out
+
+    def test_violation_no_assert_throws(self):
+        out = gen_testng("&{a: &{b: end}}")
+        assert "assertThrows" not in out
+
+    def test_violation_calls_method_directly(self):
+        """TestNG violations call the disallowed method directly (exception expected by annotation)."""
+        out = gen_testng("&{a: &{b: end}}")
+        violations = out.split("// ===== Violations")[1].split("// ===== Incomplete")[0]
+        # The disabled method should be called directly, not wrapped in lambda
+        assert "() ->" not in violations
+
+    def test_incomplete_uses_enabled_false(self):
+        out = gen_testng("&{a: &{b: end}}")
+        assert "enabled = false" in out
+
+    def test_incomplete_no_disabled_annotation(self):
+        out = gen_testng("&{a: &{b: end}}")
+        assert "@Disabled" not in out
+
+    def test_incomplete_has_description(self):
+        out = gen_testng("&{a: &{b: end}}")
+        assert "description =" in out
+
+    def test_balanced_braces(self):
+        out = gen_testng("&{open: &{read: &{close: end}, write: &{close: end}}}")
+        assert out.count("{") == out.count("}")
+
+    def test_with_package(self):
+        out = gen_testng("end", TestGenConfig("Obj", package_name="com.test", framework="testng"))
+        assert "package com.test;" in out
+
+    def test_custom_class(self):
+        out = gen_testng("&{a: end}", TestGenConfig("FileHandle", framework="testng"))
+        assert "class FileHandleProtocolTest" in out
+
+    def test_selection_switch_same_as_junit(self):
+        """Selection switches should work identically in TestNG."""
+        out = gen_testng("&{a: +{OK: &{b: end}, ERR: end}}")
+        assert "switch" in out

@@ -67,6 +67,27 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Pretty-print the lattice: states, transitions, meet/join tables",
     )
+    parser.add_argument(
+        "--test-gen",
+        action="store_true",
+        help="Generate Java test class source to stdout",
+    )
+    parser.add_argument(
+        "--class-name",
+        default=None,
+        help="Java class name for --test-gen (default: MyProtocol)",
+    )
+    parser.add_argument(
+        "--package",
+        default=None,
+        help="Java package name for --test-gen",
+    )
+    parser.add_argument(
+        "--framework",
+        default="junit",
+        choices=["junit", "testng"],
+        help="Test framework for --test-gen (default: junit)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -88,6 +109,16 @@ def main(argv: list[str] | None = None) -> None:
     result = check_lattice(ss)
 
     # Dispatch output mode
+    if args.test_gen:
+        from reticulate.testgen import TestGenConfig, generate_test_source
+        config = TestGenConfig(
+            class_name=args.class_name or "MyProtocol",
+            package_name=args.package,
+            framework=args.framework,
+        )
+        print(generate_test_source(ss, config, args.type_string))
+        return
+
     if args.lattice:
         _print_lattice(ast, ss, result)
         return
