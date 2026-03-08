@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from reticulate.coverage import CoverageResult
     from reticulate.lattice import LatticeResult
     from reticulate.statespace import StateSpace
 
@@ -31,12 +32,13 @@ def dot_source(
     title: str | None = None,
     labels: bool = True,
     edge_labels: bool = True,
+    coverage: CoverageResult | None = None,
 ) -> str:
     """Return DOT source string for the Hasse diagram of *ss*.
 
     No external dependencies — always available.
     """
-    return _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels)
+    return _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels, coverage=coverage)
 
 
 def hasse_diagram(
@@ -46,6 +48,7 @@ def hasse_diagram(
     title: str | None = None,
     labels: bool = True,
     edge_labels: bool = True,
+    coverage: CoverageResult | None = None,
 ) -> "graphviz.Digraph":  # type: ignore[name-defined]
     """Build a Graphviz ``Digraph`` for the Hasse diagram of *ss*.
 
@@ -61,7 +64,7 @@ def hasse_diagram(
             "Install it with: pip install graphviz"
         ) from None
 
-    src = _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels)
+    src = _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels, coverage=coverage)
     return graphviz.Source(src)
 
 
@@ -74,6 +77,7 @@ def render_hasse(
     title: str | None = None,
     labels: bool = True,
     edge_labels: bool = True,
+    coverage: CoverageResult | None = None,
 ) -> str:
     """Render Hasse diagram to file.  Returns the output file path."""
     try:
@@ -84,7 +88,7 @@ def render_hasse(
             "Install it with: pip install graphviz"
         ) from None
 
-    src = _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels)
+    src = _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels, coverage=coverage)
     g = graphviz.Source(src)
     return g.render(filename=path, format=fmt, cleanup=True)
 
@@ -111,6 +115,7 @@ def _build_dot(
     title: str | None,
     labels: bool,
     edge_labels: bool,
+    coverage: CoverageResult | None = None,
 ) -> str:
     lines: list[str] = []
     lines.append("digraph {")
@@ -130,9 +135,9 @@ def _build_dot(
         counter_states.add(result.counterexample[1])
 
     if result is not None:
-        _build_dot_with_result(ss, result, lines, labels, edge_labels, counter_states)
+        _build_dot_with_result(ss, result, lines, labels, edge_labels, counter_states, coverage)
     else:
-        _build_dot_plain(ss, lines, labels, edge_labels)
+        _build_dot_plain(ss, lines, labels, edge_labels, coverage)
 
     # Pin top and bottom to the top and bottom of the layout
     lines.append(f'    {{rank=source; {ss.top}}}')
@@ -147,17 +152,21 @@ def _build_dot_plain(
     lines: list[str],
     labels: bool,
     edge_labels: bool,
+    coverage: CoverageResult | None = None,
 ) -> None:
     """Add nodes/edges without SCC collapsing."""
     for sid in sorted(ss.states):
         node_label = _node_label(ss, sid, labels)
         attrs = _node_attrs(ss, sid, node_label)
+        if coverage is not None and sid in coverage.uncovered_states and sid not in (ss.top, ss.bottom):
+            attrs["fillcolor"] = "#fee2e2"
         lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
 
     for src, lbl, tgt in ss.transitions:
         edge_attrs: dict[str, str] = {}
         if edge_labels:
             edge_attrs["label"] = lbl
+        _apply_coverage_edge_attrs(edge_attrs, coverage, src, lbl, tgt)
         lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 
 
@@ -168,6 +177,7 @@ def _build_dot_with_result(
     labels: bool,
     edge_labels: bool,
     counter_states: set[int],
+    coverage: CoverageResult | None = None,
 ) -> None:
     """Add all nodes/edges with counterexample highlighting."""
     for sid in sorted(ss.states):
@@ -179,12 +189,16 @@ def _build_dot_with_result(
             attrs["color"] = "red"
             attrs["penwidth"] = "2"
 
+        if coverage is not None and sid in coverage.uncovered_states and sid not in (ss.top, ss.bottom):
+            attrs["fillcolor"] = "#fee2e2"
+
         lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
 
     for src, lbl, tgt in ss.transitions:
         edge_attrs: dict[str, str] = {}
         if edge_labels:
             edge_attrs["label"] = lbl
+        _apply_coverage_edge_attrs(edge_attrs, coverage, src, lbl, tgt)
         lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 
 
@@ -232,3 +246,22 @@ def _fmt_edge_attrs(attrs: dict[str, str]) -> str:
         return ""
     inner = ", ".join(f'{k}="{_escape_dot(v)}"' for k, v in attrs.items())
     return f" [{inner}]"
+
+
+def _apply_coverage_edge_attrs(
+    edge_attrs: dict[str, str],
+    coverage: CoverageResult | None,
+    src: int,
+    lbl: str,
+    tgt: int,
+) -> None:
+    """Merge coverage coloring into *edge_attrs* in-place."""
+    if coverage is None:
+        return
+    trans = (src, lbl, tgt)
+    if trans in coverage.covered_transitions:
+        edge_attrs["color"] = "#22c55e"
+        edge_attrs["penwidth"] = "2"
+    elif trans in coverage.uncovered_transitions:
+        edge_attrs["color"] = "#ef4444"
+        edge_attrs["style"] = "dashed"
