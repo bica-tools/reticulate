@@ -4,7 +4,14 @@ Public API re-exports from the parser, statespace, product, lattice,
 termination, morphism, and visualize modules.
 """
 
-from reticulate.lattice import LatticeResult, check_lattice, compute_join, compute_meet
+from reticulate.lattice import (
+    DistributivityResult,
+    LatticeResult,
+    check_distributive,
+    check_lattice,
+    compute_join,
+    compute_meet,
+)
 from reticulate.morphism import (
     GaloisConnection,
     Morphism,
@@ -58,6 +65,7 @@ __all__ = [
     "Continuation",
     "End",
     "GaloisConnection",
+    "DistributivityResult",
     "LatticeResult",
     "Morphism",
     "Parallel",
@@ -78,6 +86,7 @@ __all__ = [
     "Wait",
     "WFParallelResult",
     "build_statespace",
+    "check_distributive",
     "check_lattice",
     "check_termination",
     "check_wf_parallel",

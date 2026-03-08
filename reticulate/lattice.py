@@ -327,6 +327,204 @@ def _topological_sort(
 # Internal: meet and join on the quotient DAG
 # ---------------------------------------------------------------------------
 
+def check_distributive(ss: StateSpace) -> DistributivityResult:
+    """Check whether the reachability poset of *ss* is a distributive lattice.
+
+    First checks that it is a lattice (via check_lattice), then searches for
+    forbidden sublattices M₃ (diamond) and N₅ (pentagon).  By Birkhoff's
+    Theorem IX.2, a lattice is distributive iff it contains neither.
+
+    Also classifies the lattice in the Birkhoff hierarchy:
+    Boolean ⊂ Distributive ⊂ Modular ⊂ Semi-modular ⊂ Lattice
+    """
+    lr = check_lattice(ss)
+    if not lr.is_lattice:
+        return DistributivityResult(
+            is_lattice=False,
+            is_distributive=False,
+            is_modular=False,
+            has_m3=False,
+            has_n5=False,
+            m3_witness=None,
+            n5_witness=None,
+            classification="not_lattice",
+            lattice_result=lr,
+        )
+
+    q = _build_quotient_poset(ss)
+
+    # Search for N₅ (pentagon) and M₃ (diamond) sublattices
+    n5 = _find_n5(q)
+    m3 = _find_m3(q)
+
+    has_n5 = n5 is not None
+    has_m3 = m3 is not None
+
+    # Birkhoff's characterization:
+    # - Modular iff no N₅
+    # - Distributive iff no N₅ and no M₃
+    is_modular = not has_n5
+    is_distributive = is_modular and not has_m3
+
+    # Classification
+    if is_distributive:
+        # Check Boolean: every element has a complement
+        is_boolean = _check_boolean(q)
+        classification = "boolean" if is_boolean else "distributive"
+    elif is_modular:
+        classification = "modular"
+    else:
+        classification = "lattice"
+
+    # Map witnesses back to original state IDs
+    m3_orig = tuple(q.rep[n] for n in m3) if m3 else None
+    n5_orig = tuple(q.rep[n] for n in n5) if n5 else None
+
+    return DistributivityResult(
+        is_lattice=True,
+        is_distributive=is_distributive,
+        is_modular=is_modular,
+        has_m3=has_m3,
+        has_n5=has_n5,
+        m3_witness=m3_orig,
+        n5_witness=n5_orig,
+        classification=classification,
+        lattice_result=lr,
+    )
+
+
+@dataclass(frozen=True)
+class DistributivityResult:
+    """Result of distributivity check on a state space.
+
+    Attributes:
+        is_lattice: True iff the quotient poset is a lattice.
+        is_distributive: True iff it is a distributive lattice (no M₃, no N₅).
+        is_modular: True iff it is a modular lattice (no N₅).
+        has_m3: True iff the lattice contains an M₃ (diamond) sublattice.
+        has_n5: True iff the lattice contains an N₅ (pentagon) sublattice.
+        m3_witness: 5-tuple (top, a, b, c, bot) of original state IDs, or None.
+        n5_witness: 5-tuple (top, a, b, c, bot) of original state IDs, or None.
+        classification: One of "boolean", "distributive", "modular", "lattice",
+            "not_lattice".
+        lattice_result: The underlying LatticeResult.
+    """
+
+    is_lattice: bool
+    is_distributive: bool
+    is_modular: bool
+    has_m3: bool
+    has_n5: bool
+    m3_witness: tuple[int, ...] | None
+    n5_witness: tuple[int, ...] | None
+    classification: str
+    lattice_result: LatticeResult
+
+
+def _find_n5(q: _QuotientPoset) -> tuple[int, ...] | None:
+    """Search for an N₅ (pentagon) sublattice.
+
+    N₅ has 5 elements {0, a, b, c, 1} with:
+      1 > a > b > 0, 1 > c > 0, and a ∥ c, b ∥ c
+    (c is incomparable with both a and b).
+
+    We search for a chain a > b and an element c incomparable with both,
+    where all five share a common upper bound (join) and lower bound (meet).
+    """
+    nodes = sorted(q.nodes)
+    n = len(nodes)
+
+    def le(x: int, y: int) -> bool:
+        return y in q.fwd_reach[x]
+
+    def incomparable(x: int, y: int) -> bool:
+        return not le(x, y) and not le(y, x)
+
+    # For each pair a > b (chain of length 2), find c incomparable with both
+    for i in range(n):
+        for j in range(n):
+            a, b = nodes[i], nodes[j]
+            if a == b or not le(a, b):
+                continue
+            # a > b in the ordering
+            for k in range(n):
+                c = nodes[k]
+                if c == a or c == b:
+                    continue
+                if not incomparable(a, c) or not incomparable(b, c):
+                    continue
+                # Found a, b, c with a > b, c ∥ a, c ∥ b
+                # Check they have a common top and bottom
+                top = _join_on_quotient(q, a, c)
+                bot = _meet_on_quotient(q, b, c)
+                if top is not None and bot is not None:
+                    # Verify this is actually N₅: top > a > b > bot, top > c > bot
+                    if (le(top, a) and le(a, b) and le(b, bot)
+                            and le(top, c) and le(c, bot)):
+                        return (top, a, b, c, bot)
+    return None
+
+
+def _find_m3(q: _QuotientPoset) -> tuple[int, ...] | None:
+    """Search for an M₃ (diamond) sublattice.
+
+    M₃ has 5 elements {0, a, b, c, 1} with:
+      1 > a, b, c > 0
+      a, b, c pairwise incomparable
+      meet(a,b) = meet(a,c) = meet(b,c) = 0
+      join(a,b) = join(a,c) = join(b,c) = 1
+    """
+    nodes = sorted(q.nodes)
+    n = len(nodes)
+
+    def le(x: int, y: int) -> bool:
+        return y in q.fwd_reach[x]
+
+    def incomparable(x: int, y: int) -> bool:
+        return not le(x, y) and not le(y, x)
+
+    # For each triple of pairwise incomparable elements
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = nodes[i], nodes[j]
+            if not incomparable(a, b):
+                continue
+            jab = _join_on_quotient(q, a, b)
+            mab = _meet_on_quotient(q, a, b)
+            if jab is None or mab is None:
+                continue
+            for k in range(j + 1, n):
+                c = nodes[k]
+                if not incomparable(a, c) or not incomparable(b, c):
+                    continue
+                jac = _join_on_quotient(q, a, c)
+                mac = _meet_on_quotient(q, a, c)
+                jbc = _join_on_quotient(q, b, c)
+                mbc = _meet_on_quotient(q, b, c)
+                if (jac == jab == jbc and mac == mab == mbc
+                        and jab is not None and mab is not None):
+                    return (jab, a, b, c, mab)
+    return None
+
+
+def _check_boolean(q: _QuotientPoset) -> bool:
+    """Check if a distributive lattice is Boolean (every element complemented)."""
+    def le(x: int, y: int) -> bool:
+        return y in q.fwd_reach[x]
+
+    for a in q.nodes:
+        has_complement = False
+        for b in q.nodes:
+            m = _meet_on_quotient(q, a, b)
+            j = _join_on_quotient(q, a, b)
+            if m == q.bottom and j == q.top:
+                has_complement = True
+                break
+        if not has_complement:
+            return False
+    return True
+
+
 def _meet_on_quotient(q: _QuotientPoset, a: int, b: int) -> int | None:
     """Compute the meet (GLB) of quotient nodes *a* and *b*.
 
