@@ -32,6 +32,7 @@ from reticulate.parser import (
     tokenize,
 )
 from reticulate.product import product_statespace
+from reticulate.sugar import desugar, ensugar
 from reticulate.statespace import StateSpace, build_statespace
 from reticulate.termination import (
     TerminationResult,
@@ -83,7 +84,9 @@ __all__ = [
     "classify_morphism",
     "compute_join",
     "compute_meet",
+    "desugar",
     "dot_source",
+    "ensugar",
     "find_embedding",
     "find_isomorphism",
     "generate_test_source",
