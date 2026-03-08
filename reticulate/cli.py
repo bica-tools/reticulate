@@ -88,6 +88,18 @@ def main(argv: list[str] | None = None) -> None:
         choices=["junit", "testng"],
         help="Test framework for --test-gen (default: junit)",
     )
+    parser.add_argument(
+        "--coverage-hasse",
+        default=None,
+        metavar="PATH",
+        help="Render test coverage Hasse diagram to PATH (use with --test-gen)",
+    )
+    parser.add_argument(
+        "--coverage-fmt",
+        default="svg",
+        choices=["png", "svg", "pdf"],
+        help="Output format for --coverage-hasse (default: svg)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -110,13 +122,44 @@ def main(argv: list[str] | None = None) -> None:
 
     # Dispatch output mode
     if args.test_gen:
-        from reticulate.testgen import TestGenConfig, generate_test_source
+        from reticulate.coverage import compute_coverage
+        from reticulate.testgen import TestGenConfig, enumerate as enumerate_paths, generate_test_source
         config = TestGenConfig(
             class_name=args.class_name or "MyProtocol",
             package_name=args.package,
             framework=args.framework,
         )
         print(generate_test_source(ss, config, args.type_string))
+
+        # Compute and report test coverage
+        enum_result = enumerate_paths(ss, config)
+        coverage = compute_coverage(ss, result=enum_result)
+        tc = coverage.transition_coverage * 100
+        sc = coverage.state_coverage * 100
+        n_covered = len(coverage.covered_transitions)
+        n_total = n_covered + len(coverage.uncovered_transitions)
+        s_covered = len(coverage.covered_states)
+        s_total = s_covered + len(coverage.uncovered_states)
+        print(f"\n// Test coverage: transitions {n_covered}/{n_total} ({tc:.0f}%), states {s_covered}/{s_total} ({sc:.0f}%)", file=sys.stderr)
+
+        # Render coverage diagram if requested
+        if args.coverage_hasse is not None:
+            try:
+                out = render_hasse(
+                    ss,
+                    args.coverage_hasse,
+                    fmt=args.coverage_fmt,
+                    result=result,
+                    title=f"Test Coverage — {args.class_name or 'MyProtocol'}",
+                    coverage=coverage,
+                )
+            except ImportError:
+                print(
+                    "Error: The 'graphviz' Python package is required for --coverage-hasse.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            print(f"Coverage diagram: {out}", file=sys.stderr)
         return
 
     if args.lattice:
