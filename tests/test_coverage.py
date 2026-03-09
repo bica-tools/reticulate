@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from reticulate.coverage import CoverageFrame, CoverageResult, compute_coverage, incremental_coverage
+from reticulate.coverage import CoverageResult, compute_coverage
 from reticulate.parser import parse
 from reticulate.statespace import StateSpace, build_statespace
 from reticulate.testgen import (
@@ -333,90 +333,6 @@ class TestDotSourceCoverage:
         cov = compute_coverage(s, paths=[path])
         dot = dot_source(s, coverage=cov)
         assert "#fee2e2" in dot  # light red fill for uncovered states
-
-
-# =========================================================================
-# Integration: enumerate → coverage → dot_source
-# =========================================================================
-
-# =========================================================================
-# Incremental coverage
-# =========================================================================
-
-class TestIncrementalCoverage:
-    def test_end_type_no_frames(self):
-        s = ss("end")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        assert frames == []
-
-    def test_branch_frame_count(self):
-        s = ss("&{m: end, n: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        # 2 valid paths + violations + incomplete prefixes
-        total_tests = len(result.valid_paths) + len(result.violations) + len(result.incomplete_prefixes)
-        assert len(frames) == total_tests
-
-    def test_coverage_increases_monotonically(self):
-        s = ss("&{m: &{a: end}, n: &{b: end}}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        coverages = [f.coverage.transition_coverage for f in frames]
-        # Each frame should have >= coverage than the previous
-        for i in range(1, len(coverages)):
-            assert coverages[i] >= coverages[i - 1]
-
-    def test_last_frame_is_full_coverage(self):
-        s = ss("&{m: end, n: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        assert frames[-1].coverage.transition_coverage == pytest.approx(1.0)
-
-    def test_frame_has_description(self):
-        s = ss("&{m: end, n: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        assert all(f.description for f in frames)
-
-    def test_frame_kinds(self):
-        s = ss("&{m: end, n: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        kinds = {f.test_kind for f in frames}
-        # Should have at least valid paths and violations
-        assert "valid" in kinds
-
-    def test_valid_paths_come_first(self):
-        s = ss("&{m: end, n: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        # Valid paths are yielded before violations and incompletes
-        valid_indices = [f.test_index for f in frames if f.test_kind == "valid"]
-        other_indices = [f.test_index for f in frames if f.test_kind != "valid"]
-        if valid_indices and other_indices:
-            assert max(valid_indices) < min(other_indices)
-
-    def test_recursive_incremental(self):
-        s = ss("rec X . &{next: X, done: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        assert len(frames) > 0
-        assert frames[-1].coverage.transition_coverage == pytest.approx(1.0)
-
-    def test_parallel_incremental(self):
-        s = ss("(&{a: end} || &{b: end})")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        assert len(frames) > 0
-        assert frames[-1].coverage.transition_coverage == pytest.approx(1.0)
-
-    def test_frame_is_frozen(self):
-        s = ss("&{m: end}")
-        result = enumerate(s, TestGenConfig(class_name="T"))
-        frames = incremental_coverage(s, result=result)
-        with pytest.raises(AttributeError):
-            frames[0].test_index = 99  # type: ignore[misc]
 
 
 # =========================================================================

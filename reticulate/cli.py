@@ -92,19 +92,13 @@ def main(argv: list[str] | None = None) -> None:
         "--coverage-hasse",
         default=None,
         metavar="PATH",
-        help="Render final test coverage diagram to PATH (use with --test-gen)",
-    )
-    parser.add_argument(
-        "--coverage-interactive",
-        default=None,
-        metavar="DIR",
-        help="Render incremental coverage frames to DIR (one per test, use with --test-gen)",
+        help="Render test coverage Hasse diagram to PATH (use with --test-gen)",
     )
     parser.add_argument(
         "--coverage-fmt",
         default="svg",
         choices=["png", "svg", "pdf"],
-        help="Output format for coverage diagrams (default: svg)",
+        help="Output format for --coverage-hasse (default: svg)",
     )
 
     args = parser.parse_args(argv)
@@ -128,7 +122,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Dispatch output mode
     if args.test_gen:
-        from reticulate.coverage import compute_coverage, incremental_coverage
+        from reticulate.coverage import compute_coverage
         from reticulate.testgen import TestGenConfig, enumerate as enumerate_paths, generate_test_source
         config = TestGenConfig(
             class_name=args.class_name or "MyProtocol",
@@ -148,7 +142,7 @@ def main(argv: list[str] | None = None) -> None:
         s_total = s_covered + len(coverage.uncovered_states)
         print(f"\n// Test coverage: transitions {n_covered}/{n_total} ({tc:.0f}%), states {s_covered}/{s_total} ({sc:.0f}%)", file=sys.stderr)
 
-        # Render final coverage diagram if requested
+        # Render coverage diagram if requested
         if args.coverage_hasse is not None:
             try:
                 out = render_hasse(
@@ -166,46 +160,6 @@ def main(argv: list[str] | None = None) -> None:
                 )
                 sys.exit(1)
             print(f"Coverage diagram: {out}", file=sys.stderr)
-
-        # Render incremental coverage frames if requested
-        if args.coverage_interactive is not None:
-            import os
-            os.makedirs(args.coverage_interactive, exist_ok=True)
-            frames = incremental_coverage(ss, result=enum_result)
-            name = args.class_name or "MyProtocol"
-            # Frame 0: initial state (all uncovered)
-            try:
-                initial_cov = compute_coverage(ss)  # no paths → 0% coverage
-                out = render_hasse(
-                    ss,
-                    os.path.join(args.coverage_interactive, "frame-000"),
-                    fmt=args.coverage_fmt,
-                    result=result,
-                    title=f"{name} — before tests (0%)",
-                    coverage=initial_cov,
-                )
-                print(f"  frame 000: {out}", file=sys.stderr)
-
-                for frame in frames:
-                    tc_pct = frame.coverage.transition_coverage * 100
-                    idx = frame.test_index + 1
-                    fname = f"frame-{idx:03d}"
-                    out = render_hasse(
-                        ss,
-                        os.path.join(args.coverage_interactive, fname),
-                        fmt=args.coverage_fmt,
-                        result=result,
-                        title=f"{name} — {frame.description} ({tc_pct:.0f}%)",
-                        coverage=frame.coverage,
-                    )
-                    print(f"  frame {idx:03d}: {out} — {frame.description}", file=sys.stderr)
-            except ImportError:
-                print(
-                    "Error: The 'graphviz' Python package is required for --coverage-interactive.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            print(f"Rendered {len(frames) + 1} coverage frames to {args.coverage_interactive}/", file=sys.stderr)
         return
 
     if args.lattice:
