@@ -18,19 +18,41 @@ from reticulate.subtyping import (
 
 
 class TestSubtypeEnd:
-    """end ≤ end is the only relation involving end."""
+    """end ≡ &{} — the empty branch, not a separate constructor.
+
+    Since end is the branch with zero methods:
+      - Any branch type is a subtype of end (∅ ⊆ {m₁,...,mₙ})
+      - end is NOT a subtype of any non-empty branch ({m,...} ⊄ ∅)
+      - end and selection types remain incomparable (different families)
+    """
 
     def test_end_subtype_end(self):
         assert is_subtype(End(), End())
 
-    def test_end_incomparable_with_branch(self):
-        """end and &{a: end} are incomparable (different constructors)."""
+    def test_branch_is_subtype_of_end(self):
+        """&{a: end} ≤_GH end — by Sub-Branch: ∅ ⊆ {a}."""
+        assert is_subtype(parse("&{a: end}"), End())
+
+    def test_end_not_subtype_of_branch(self):
+        """end ≤_GH &{a: end} — FAILS: {a} ⊄ ∅."""
         assert not is_subtype(End(), parse("&{a: end}"))
-        assert not is_subtype(parse("&{a: end}"), End())
+
+    def test_wider_branch_subtype_of_end(self):
+        """&{a: end, b: end, c: end} ≤_GH end — ∅ ⊆ {a,b,c}."""
+        assert is_subtype(parse("&{a: end, b: end, c: end}"), End())
 
     def test_end_incomparable_with_selection(self):
+        """end (≡ &{}) and +{a: end} are incomparable (branch vs select)."""
         assert not is_subtype(End(), parse("+{a: end}"))
         assert not is_subtype(parse("+{a: end}"), End())
+
+    def test_nested_branch_subtype_of_end(self):
+        """&{a: &{b: end}} ≤_GH end — ∅ ⊆ {a}."""
+        assert is_subtype(parse("&{a: &{b: end}}"), End())
+
+    def test_recursive_subtype_of_end(self):
+        """rec X . &{a: X, b: end} ≤_GH end — ∅ ⊆ {a,b}."""
+        assert is_subtype(parse("rec X . &{a: X, b: end}"), End())
 
 
 # ---------------------------------------------------------------------------
@@ -57,15 +79,15 @@ class TestSubtypeBranch:
         wide = parse("&{a: end, b: end}")
         assert not is_subtype(narrow, wide)
 
-    def test_covariant_depth(self):
-        """&{a: &{b: end}} ≤ &{a: end} — deeper continuation is NOT subtype.
+    def test_covariant_depth_with_end(self):
+        """&{a: &{b: end}} ≤ &{a: end} — TRUE because end ≡ &{}.
 
-        The continuation &{b: end} is incomparable with end (different
-        constructors), so the depth subtyping check fails.
+        The continuation &{b: end} ≤_GH end ≡ &{} holds by Sub-Branch
+        (∅ ⊆ {b}).  So the whole relation holds.
         """
         deep = parse("&{a: &{b: end}}")
         shallow = parse("&{a: end}")
-        assert not is_subtype(deep, shallow)
+        assert is_subtype(deep, shallow)
 
     def test_same_structure_different_depth(self):
         """&{a: &{b: end, c: end}} ≤ &{a: &{b: end}} — covariant depth."""
@@ -280,6 +302,15 @@ class TestSubtypeProperties:
         b = parse("&{a: end, b: end}")
         c = parse("&{a: end}")
         assert is_subtype(a, b) and is_subtype(b, c) and is_subtype(a, c)
+
+    def test_transitivity_branch_to_end(self):
+        """Full chain: &{a,b,c} ≤ &{a,b} ≤ &{a} ≤ end."""
+        a = parse("&{a: end, b: end, c: end}")
+        b = parse("&{a: end, b: end}")
+        c = parse("&{a: end}")
+        d = End()
+        assert is_subtype(a, b) and is_subtype(b, c)
+        assert is_subtype(c, d) and is_subtype(a, d)
 
     def test_transitivity_selection(self):
         a = parse("+{a: end}")

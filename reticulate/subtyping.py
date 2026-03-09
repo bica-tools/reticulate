@@ -2,8 +2,13 @@
 
 Implements the Gay–Hole coinductive subtyping relation on session type ASTs.
 
+Key insight: end is NOT a primary constructor.  It is syntactic sugar for
+the empty branch &{} — a valid termination point where no methods remain.
+This means end and &{...} are in the SAME constructor family:
+  - &{a: end} ≤_GH end  is TRUE  (by Sub-Branch: ∅ ⊆ {a})
+  - end ≤_GH &{a: end}  is FALSE ({a} ⊄ ∅)
+
 Gay–Hole subtyping rules:
-  - end ≤ end
   - &{m₁:S₁,...,mₙ:Sₙ} ≤ &{m₁':S₁',...,mₖ':Sₖ'}
       iff {m₁',...,mₖ'} ⊆ {m₁,...,mₙ}  (subtype offers MORE methods)
       and for each mᵢ' in RHS: Sₘᵢ ≤ Sᵢ'   (covariant continuations)
@@ -12,8 +17,8 @@ Gay–Hole subtyping rules:
       and for each lᵢ in LHS: Sᵢ ≤ Sₗᵢ'   (covariant continuations)
   - rec X.S₁ ≤ rec Y.S₂  via coinduction (greatest fixpoint)
 
-Note: different top-level constructors (e.g. end vs Branch, Branch vs Select)
-are INCOMPARABLE.  The subtyping operates within the same constructor family.
+Since end ≡ &{}, end is comparable with all branch types but incomparable
+with selection types (+{...}).
 
 The Step 7 claim: the reachability ordering in L(S) captures the
 Gay–Hole subtyping on residual types at each state.  This is verified
@@ -129,15 +134,14 @@ def _check_subtype(
     pair_id_unf = (id(s1_unf), id(s2_unf))
     new_assumptions = assumptions | {pair_id, pair_id_unf}
 
-    # Base cases: end/wait
-    if isinstance(s1_unf, (End, Wait)) and isinstance(s2_unf, (End, Wait)):
-        return True
+    # Normalize: end ≡ &{} (empty branch).  This is not syntactic sugar
+    # but a semantic identity: end is the branch with zero methods.
+    if isinstance(s1_unf, (End, Wait)):
+        s1_unf = Branch(())
+    if isinstance(s2_unf, (End, Wait)):
+        s2_unf = Branch(())
 
-    # Different constructors are INCOMPARABLE
-    if isinstance(s1_unf, (End, Wait)) != isinstance(s2_unf, (End, Wait)):
-        return False
-
-    # Branch: &{...} ≤ &{...}
+    # Branch: &{...} ≤ &{...}  (includes end ≡ &{})
     if isinstance(s1_unf, Branch) and isinstance(s2_unf, Branch):
         s1_dict = dict(s1_unf.choices)
         s2_dict = dict(s2_unf.choices)
@@ -220,8 +224,11 @@ def _explain_failure(s1: SessionType, s2: SessionType) -> str:
     s1_unf = _unfold(s1)
     s2_unf = _unfold(s2)
 
-    if type(s1_unf).__name__ != type(s2_unf).__name__:
-        return f"incompatible constructors: {type(s1_unf).__name__} vs {type(s2_unf).__name__}"
+    # Normalize end ≡ &{}
+    if isinstance(s1_unf, (End, Wait)):
+        s1_unf = Branch(())
+    if isinstance(s2_unf, (End, Wait)):
+        s2_unf = Branch(())
 
     if isinstance(s1_unf, Branch) and isinstance(s2_unf, Branch):
         s1_methods = set(dict(s1_unf.choices).keys())
@@ -239,7 +246,9 @@ def _explain_failure(s1: SessionType, s2: SessionType) -> str:
             return f"subtype selects labels not in supertype: {extra}"
         return "continuation mismatch in selection"
 
-    return f"incompatible constructors: {type(s1_unf).__name__} vs {type(s2_unf).__name__}"
+    s1_name = "Branch" if isinstance(s1_unf, Branch) else type(s1_unf).__name__
+    s2_name = "Branch" if isinstance(s2_unf, Branch) else type(s2_unf).__name__
+    return f"incompatible constructors: {s1_name} vs {s2_name}"
 
 
 # ---------------------------------------------------------------------------
