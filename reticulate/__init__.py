@@ -65,6 +65,14 @@ from reticulate.testgen import (
     enumerate_client_programs,
     generate_test_source,
 )
+from reticulate.endomorphism import (
+    EndomorphismResult,
+    EndomorphismSummary,
+    TransitionMap,
+    check_all_endomorphisms,
+    check_endomorphism,
+    extract_transition_maps,
+)
 from reticulate.reticular import (
     ReticularFormResult,
     StateClassification,
@@ -125,6 +133,12 @@ __all__ = [
     "coverage_storyboard",
     "compute_join",
     "compute_meet",
+    "EndomorphismResult",
+    "EndomorphismSummary",
+    "TransitionMap",
+    "check_all_endomorphisms",
+    "check_endomorphism",
+    "extract_transition_maps",
     "ReticularFormResult",
     "StateClassification",
     "check_reticular_form",
