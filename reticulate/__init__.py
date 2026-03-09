@@ -65,6 +65,15 @@ from reticulate.testgen import (
     enumerate_client_programs,
     generate_test_source,
 )
+from reticulate.reticular import (
+    ReticularFormResult,
+    StateClassification,
+    check_reticular_form,
+    classify_all_states,
+    classify_state,
+    is_reticulate,
+    reconstruct,
+)
 from reticulate.duality import (
     DualityResult,
     check_duality,
@@ -116,6 +125,13 @@ __all__ = [
     "coverage_storyboard",
     "compute_join",
     "compute_meet",
+    "ReticularFormResult",
+    "StateClassification",
+    "check_reticular_form",
+    "classify_all_states",
+    "classify_state",
+    "is_reticulate",
+    "reconstruct",
     "DualityResult",
     "check_duality",
     "dual",
