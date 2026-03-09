@@ -94,6 +94,28 @@ from reticulate.subtyping import (
     check_width_embedding,
     is_subtype,
 )
+from reticulate.global_types import (
+    GEnd,
+    GMessage,
+    GParallel,
+    GRec,
+    GVar,
+    GlobalParseError,
+    GlobalType,
+    build_global_statespace,
+    parse_global,
+    pretty_global,
+    roles,
+)
+from reticulate.projection import (
+    ProjectionError,
+    ProjectionMorphismResult,
+    ProjectionResult,
+    check_projection,
+    project,
+    project_all,
+    verify_projection_morphism,
+)
 from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
@@ -170,4 +192,22 @@ __all__ = [
     "check_width_embedding",
     "is_subtype",
     "tokenize",
+    "GEnd",
+    "GMessage",
+    "GParallel",
+    "GRec",
+    "GVar",
+    "GlobalParseError",
+    "GlobalType",
+    "build_global_statespace",
+    "parse_global",
+    "pretty_global",
+    "roles",
+    "ProjectionError",
+    "ProjectionMorphismResult",
+    "ProjectionResult",
+    "check_projection",
+    "project",
+    "project_all",
+    "verify_projection_morphism",
 ]
