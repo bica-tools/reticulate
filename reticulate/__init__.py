@@ -65,6 +65,13 @@ from reticulate.testgen import (
     enumerate_client_programs,
     generate_test_source,
 )
+from reticulate.subtyping import (
+    SubtypingResult,
+    WidthSubtypingResult,
+    check_subtype,
+    check_width_embedding,
+    is_subtype,
+)
 from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
@@ -119,5 +126,10 @@ __all__ = [
     "pretty",
     "product_statespace",
     "render_hasse",
+    "SubtypingResult",
+    "WidthSubtypingResult",
+    "check_subtype",
+    "check_width_embedding",
+    "is_subtype",
     "tokenize",
 ]
