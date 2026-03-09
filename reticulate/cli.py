@@ -95,10 +95,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Render test coverage Hasse diagram to PATH (use with --test-gen)",
     )
     parser.add_argument(
+        "--coverage-storyboard",
+        default=None,
+        metavar="DIR",
+        help="Render coverage storyboard to DIR — one frame per test (use with --test-gen)",
+    )
+    parser.add_argument(
         "--coverage-fmt",
         default="svg",
         choices=["png", "svg", "pdf"],
-        help="Output format for --coverage-hasse (default: svg)",
+        help="Output format for coverage diagrams (default: svg)",
     )
 
     args = parser.parse_args(argv)
@@ -160,6 +166,25 @@ def main(argv: list[str] | None = None) -> None:
                 )
                 sys.exit(1)
             print(f"Coverage diagram: {out}", file=sys.stderr)
+
+        # Render storyboard if requested
+        if args.coverage_storyboard is not None:
+            from reticulate.coverage import coverage_storyboard, render_storyboard
+            frames = coverage_storyboard(ss, enum_result)
+            try:
+                outputs = render_storyboard(
+                    ss, frames, args.coverage_storyboard,
+                    fmt=args.coverage_fmt, result=result,
+                )
+            except ImportError:
+                print(
+                    "Error: The 'graphviz' Python package is required for --coverage-storyboard.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            for out_path in outputs:
+                print(f"  {out_path}", file=sys.stderr)
+            print(f"Storyboard: {len(outputs)} frames in {args.coverage_storyboard}/", file=sys.stderr)
         return
 
     if args.lattice:
