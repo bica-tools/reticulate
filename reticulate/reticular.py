@@ -136,6 +136,11 @@ class _Reconstructor:
         self._cache: dict[int, SessionType] = {}
 
     def reconstruct(self) -> SessionType:
+        # If top == bottom and top has transitions, it's a fully cyclic FSM.
+        # Treat top as a recursive entry point, not as End.
+        if (self._ss.top == self._ss.bottom
+                and self._ss.enabled(self._ss.top)):
+            return self._visit(self._ss.top, is_entry=True)
         return self._visit(self._ss.top)
 
     def _fresh_var(self) -> str:
@@ -146,9 +151,10 @@ class _Reconstructor:
         self._var_counter += 1
         return name
 
-    def _visit(self, state: int) -> SessionType:
-        # Bottom state → End
-        if state == self._ss.bottom:
+    def _visit(self, state: int, is_entry: bool = False) -> SessionType:
+        # Bottom state → End (but not if it's the entry point of a cycle
+        # or if we're revisiting it as part of a cycle)
+        if state == self._ss.bottom and not is_entry and state not in self._in_progress:
             return End()
 
         # Already computed → return cached
