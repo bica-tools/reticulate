@@ -142,7 +142,14 @@ from reticulate.context_free import (
     is_regular,
     stack_depth_bound,
 )
-from reticulate.visualize import dot_source, hasse_diagram, render_hasse
+from reticulate.visualize import (
+    dot_source,
+    hasse_diagram,
+    render_hasse,
+    role_dot_source,
+    role_hasse_diagram,
+    role_render_hasse,
+)
 
 __all__ = [
     "Branch",
@@ -258,4 +265,7 @@ __all__ = [
     "has_continuation_recursion",
     "is_regular",
     "stack_depth_bound",
+    "role_dot_source",
+    "role_hasse_diagram",
+    "role_render_hasse",
 ]

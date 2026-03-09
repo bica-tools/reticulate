@@ -1,12 +1,17 @@
 """Visualization of session type state spaces as Hasse diagrams.
 
 Generates Graphviz DOT representations of state-space transition systems.
-Supports counterexample highlighting and optional label/edge-label toggling.
+Supports counterexample highlighting, optional label/edge-label toggling,
+and role-annotated edges for multiparty global types.
 All states and transitions (including recursion cycles) are shown explicitly.
 
 The ``dot_source()`` function uses only the standard library and is always
 available.  ``hasse_diagram()`` and ``render_hasse()`` require the ``graphviz``
 Python package (lazy-imported).
+
+For multiparty global types, use ``role_dot_source()``, ``role_hasse_diagram()``,
+and ``role_render_hasse()`` to produce role-colored Hasse diagrams where each
+edge is colored by the sender role and labeled with the interaction.
 """
 
 from __future__ import annotations
@@ -265,3 +270,209 @@ def _apply_coverage_edge_attrs(
     elif trans in coverage.uncovered_transitions:
         edge_attrs["color"] = "#ef4444"
         edge_attrs["style"] = "dashed"
+
+
+# ---------------------------------------------------------------------------
+# Role-annotated Hasse diagrams (multiparty global types)
+# ---------------------------------------------------------------------------
+
+# Perceptually distinct color palette for up to 10 roles
+_ROLE_COLORS = [
+    "#2563eb",  # blue
+    "#dc2626",  # red
+    "#16a34a",  # green
+    "#9333ea",  # purple
+    "#ea580c",  # orange
+    "#0891b2",  # cyan
+    "#be185d",  # pink
+    "#854d0e",  # brown
+    "#4f46e5",  # indigo
+    "#65a30d",  # lime
+]
+
+
+def _extract_roles_from_transitions(
+    ss: "StateSpace",
+) -> tuple[dict[str, str], set[str]]:
+    """Extract role→color mapping from role-annotated transition labels.
+
+    Labels of the form "sender->receiver:method" are parsed to identify
+    sender and receiver roles. Returns (role_colors, all_roles).
+    """
+    all_roles: set[str] = set()
+    for _, lbl, _ in ss.transitions:
+        if "->" in lbl and ":" in lbl:
+            role_part, _ = lbl.split(":", 1)
+            parts = role_part.split("->")
+            if len(parts) == 2:
+                all_roles.add(parts[0])
+                all_roles.add(parts[1])
+
+    role_colors: dict[str, str] = {}
+    for i, role in enumerate(sorted(all_roles)):
+        role_colors[role] = _ROLE_COLORS[i % len(_ROLE_COLORS)]
+
+    return role_colors, all_roles
+
+
+def _parse_role_label(lbl: str) -> tuple[str | None, str | None, str]:
+    """Parse a role-annotated label "sender->receiver:method".
+
+    Returns (sender, receiver, method). If not role-annotated, returns
+    (None, None, lbl).
+    """
+    if "->" not in lbl or ":" not in lbl:
+        return None, None, lbl
+    role_part, method = lbl.split(":", 1)
+    parts = role_part.split("->")
+    if len(parts) != 2:
+        return None, None, lbl
+    return parts[0], parts[1], method
+
+
+def role_dot_source(
+    ss: "StateSpace",
+    *,
+    title: str | None = None,
+    labels: bool = True,
+    edge_labels: bool = True,
+    role_colors: dict[str, str] | None = None,
+    show_legend: bool = True,
+) -> str:
+    """Return DOT source for a role-annotated Hasse diagram.
+
+    Edges are colored by sender role. The legend shows role→color mapping.
+
+    Parameters:
+        ss: State space with role-annotated transition labels.
+        title: Optional diagram title.
+        labels: Show state labels.
+        edge_labels: Show transition labels.
+        role_colors: Optional custom role→color mapping. If None,
+            colors are assigned automatically.
+        show_legend: Show role color legend.
+    """
+    if role_colors is None:
+        role_colors, _ = _extract_roles_from_transitions(ss)
+
+    lines: list[str] = []
+    lines.append("digraph {")
+    lines.append("    rankdir=TB;")
+    lines.append('    node [shape=box, style="filled,rounded", fontname="Helvetica"];')
+    lines.append('    edge [fontname="Helvetica", fontsize=10];')
+
+    if title is not None:
+        lines.append(f'    label="{_escape_dot(title)}";')
+        lines.append("    labelloc=t;")
+        lines.append("    fontsize=14;")
+
+    # Nodes
+    for sid in sorted(ss.states):
+        node_label = _node_label(ss, sid, labels)
+        attrs = _node_attrs(ss, sid, node_label)
+        lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
+
+    # Edges with role coloring
+    for src, lbl, tgt in ss.transitions:
+        edge_attrs: dict[str, str] = {}
+        sender, receiver, method = _parse_role_label(lbl)
+
+        if edge_labels:
+            if sender is not None:
+                edge_attrs["label"] = f"{sender}\u2192{receiver}:{method}"
+            else:
+                edge_attrs["label"] = lbl
+
+        if sender is not None and sender in role_colors:
+            edge_attrs["color"] = role_colors[sender]
+            edge_attrs["fontcolor"] = role_colors[sender]
+            edge_attrs["penwidth"] = "1.5"
+
+        # Mark selection transitions with dashed style
+        if ss.is_selection(src, lbl, tgt):
+            edge_attrs["style"] = "dashed"
+
+        lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
+
+    # Layout hints
+    lines.append(f'    {{rank=source; {ss.top}}}')
+    lines.append(f'    {{rank=sink; {ss.bottom}}}')
+
+    # Legend
+    if show_legend and role_colors:
+        lines.append("")
+        lines.append("    subgraph cluster_legend {")
+        lines.append('        label="Roles";')
+        lines.append('        style=rounded;')
+        lines.append('        color="#94a3b8";')
+        lines.append('        fontname="Helvetica";')
+        lines.append('        fontsize=11;')
+        lines.append('        node [shape=plaintext, fillcolor=white];')
+
+        legend_rows = []
+        for role in sorted(role_colors.keys()):
+            color = role_colors[role]
+            legend_rows.append(
+                f'<TR><TD><FONT COLOR="{color}">\u25CF</FONT></TD>'
+                f'<TD ALIGN="LEFT">{_escape_dot(role)}</TD></TR>'
+            )
+        table = "<TABLE BORDER=\"0\" CELLSPACING=\"0\">" + "".join(legend_rows) + "</TABLE>"
+        lines.append(f'        legend [label=<{table}>];')
+        lines.append("    }")
+
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def role_hasse_diagram(
+    ss: "StateSpace",
+    *,
+    title: str | None = None,
+    labels: bool = True,
+    edge_labels: bool = True,
+    role_colors: dict[str, str] | None = None,
+    show_legend: bool = True,
+) -> "graphviz.Digraph":  # type: ignore[name-defined]
+    """Build a role-annotated Hasse diagram as a Graphviz object.
+
+    Raises ``ImportError`` if the ``graphviz`` package is not installed.
+    """
+    try:
+        import graphviz
+    except ImportError:
+        raise ImportError(
+            "The 'graphviz' Python package is required for role_hasse_diagram()."
+        ) from None
+
+    src = role_dot_source(
+        ss, title=title, labels=labels, edge_labels=edge_labels,
+        role_colors=role_colors, show_legend=show_legend,
+    )
+    return graphviz.Source(src)
+
+
+def role_render_hasse(
+    ss: "StateSpace",
+    path: str,
+    *,
+    fmt: str = "png",
+    title: str | None = None,
+    labels: bool = True,
+    edge_labels: bool = True,
+    role_colors: dict[str, str] | None = None,
+    show_legend: bool = True,
+) -> str:
+    """Render role-annotated Hasse diagram to file. Returns output path."""
+    try:
+        import graphviz
+    except ImportError:
+        raise ImportError(
+            "The 'graphviz' Python package is required for role_render_hasse()."
+        ) from None
+
+    src = role_dot_source(
+        ss, title=title, labels=labels, edge_labels=edge_labels,
+        role_colors=role_colors, show_legend=show_legend,
+    )
+    g = graphviz.Source(src)
+    return g.render(filename=path, format=fmt, cleanup=True)
