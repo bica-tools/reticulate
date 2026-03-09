@@ -97,8 +97,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--coverage-storyboard",
         default=None,
-        metavar="DIR",
-        help="Render coverage storyboard to DIR — one frame per test (use with --test-gen)",
+        metavar="FILE",
+        help="Render coverage storyboard to FILE (HTML) — one frame per test (use with --test-gen)",
     )
     parser.add_argument(
         "--coverage-fmt",
@@ -171,20 +171,16 @@ def main(argv: list[str] | None = None) -> None:
         if args.coverage_storyboard is not None:
             from reticulate.coverage import coverage_storyboard, render_storyboard
             frames = coverage_storyboard(ss, enum_result)
+            name = args.class_name or "MyProtocol"
             try:
-                outputs = render_storyboard(
+                out = render_storyboard(
                     ss, frames, args.coverage_storyboard,
-                    fmt=args.coverage_fmt, result=result,
+                    result=result, title=f"Coverage Storyboard — {name}",
                 )
-            except ImportError:
-                print(
-                    "Error: The 'graphviz' Python package is required for --coverage-storyboard.",
-                    file=sys.stderr,
-                )
+            except (RuntimeError, FileNotFoundError) as e:
+                print(f"Error: {e}", file=sys.stderr)
                 sys.exit(1)
-            for out_path in outputs:
-                print(f"  {out_path}", file=sys.stderr)
-            print(f"Storyboard: {len(outputs)} frames in {args.coverage_storyboard}/", file=sys.stderr)
+            print(f"Storyboard ({len(frames) + 1} frames): {out}", file=sys.stderr)
         return
 
     if args.lattice:

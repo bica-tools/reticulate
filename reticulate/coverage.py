@@ -218,47 +218,91 @@ def coverage_storyboard(
 def render_storyboard(
     ss: StateSpace,
     frames: list[CoverageFrame],
-    output_dir: str,
+    output_path: str,
     *,
-    fmt: str = "svg",
     result: LatticeResult | None = None,
-) -> list[str]:
-    """Render a coverage storyboard to numbered files in *output_dir*.
+    title: str | None = None,
+) -> str:
+    """Render a coverage storyboard as a single HTML file.
 
-    Returns the list of output file paths.
+    Each frame is an inline SVG captioned with the test method name
+    and cumulative coverage percentage.  Returns *output_path*.
     """
-    import os
-    from reticulate.visualize import render_hasse
+    from reticulate.visualize import dot_source
+    import subprocess
 
-    os.makedirs(output_dir, exist_ok=True)
-    paths: list[str] = []
+    page_title = title or "Coverage Storyboard"
+
+    html_parts: list[str] = []
+    html_parts.append("<!DOCTYPE html>")
+    html_parts.append(f"<html><head><meta charset='utf-8'><title>{_html_escape(page_title)}</title>")
+    html_parts.append("<style>")
+    html_parts.append("body { font-family: Helvetica, Arial, sans-serif; background: #f8fafc; margin: 2em; }")
+    html_parts.append("h1 { color: #1e293b; }")
+    html_parts.append(".frame { display: inline-block; vertical-align: top; margin: 1em; "
+                       "background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1em; }")
+    html_parts.append(".frame-title { font-size: 0.85em; font-weight: bold; margin-bottom: 0.5em; }")
+    html_parts.append(".frame-title .pct { color: #64748b; }")
+    html_parts.append(".kind-valid .frame-title { color: #16a34a; }")
+    html_parts.append(".kind-violation .frame-title { color: #dc2626; }")
+    html_parts.append(".kind-incomplete .frame-title { color: #d97706; }")
+    html_parts.append(".kind-initial .frame-title { color: #64748b; }")
+    html_parts.append("</style></head><body>")
+    html_parts.append(f"<h1>{_html_escape(page_title)}</h1>")
 
     # Frame 0: before any tests
-    initial = _build_coverage(ss, frozenset(ss.transitions), set())
-    out = render_hasse(
-        ss,
-        os.path.join(output_dir, "frame-000"),
-        fmt=fmt,
-        result=result,
-        title="Before tests (0%)",
-        coverage=initial,
-    )
-    paths.append(out)
+    initial_cov = _build_coverage(ss, frozenset(ss.transitions), set())
+    svg_0 = _dot_to_svg(dot_source(ss, result, title="Before tests", coverage=initial_cov))
+    html_parts.append('<div class="frame kind-initial">')
+    html_parts.append('<div class="frame-title">Before tests <span class="pct">(0%)</span></div>')
+    html_parts.append(svg_0)
+    html_parts.append("</div>")
 
     # One frame per test
-    for i, frame in enumerate(frames):
+    for frame in frames:
         tc = frame.coverage.transition_coverage * 100
-        out = render_hasse(
-            ss,
-            os.path.join(output_dir, f"frame-{i + 1:03d}"),
-            fmt=fmt,
-            result=result,
-            title=f"{frame.test_name}() — {tc:.0f}%",
-            coverage=frame.coverage,
+        svg = _dot_to_svg(dot_source(ss, result, coverage=frame.coverage))
+        kind_class = f"kind-{frame.test_kind}"
+        html_parts.append(f'<div class="frame {kind_class}">')
+        html_parts.append(
+            f'<div class="frame-title">{_html_escape(frame.test_name)}() '
+            f'<span class="pct">({tc:.0f}%)</span></div>'
         )
-        paths.append(out)
+        html_parts.append(svg)
+        html_parts.append("</div>")
 
-    return paths
+    html_parts.append("</body></html>")
+
+    with open(output_path, "w") as f:
+        f.write("\n".join(html_parts))
+
+    return output_path
+
+
+def _html_escape(s: str) -> str:
+    """Escape a string for HTML content."""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _dot_to_svg(dot: str) -> str:
+    """Convert DOT source to SVG using the graphviz dot command."""
+    import subprocess
+    proc = subprocess.run(
+        ["dot", "-Tsvg"],
+        input=dot,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"dot command failed: {proc.stderr}")
+    # Strip the XML declaration and DOCTYPE to embed inline
+    svg = proc.stdout
+    for prefix in ('<?xml', '<!DOCTYPE'):
+        while prefix in svg:
+            start = svg.index(prefix)
+            end = svg.index('>', start) + 1
+            svg = svg[:start] + svg[end:]
+    return svg.strip()
 
 
 def _build_coverage(
