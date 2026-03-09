@@ -4,7 +4,7 @@ Public API re-exports from the parser, statespace, product, lattice,
 termination, morphism, and visualize modules.
 """
 
-from reticulate.coverage import CoverageResult, compute_coverage
+from reticulate.coverage import CoverageFrame, CoverageResult, compute_coverage, incremental_coverage
 from reticulate.lattice import (
     DistributivityResult,
     LatticeResult,
@@ -63,6 +63,7 @@ from reticulate.visualize import dot_source, hasse_diagram, render_hasse
 
 __all__ = [
     "Branch",
+    "CoverageFrame",
     "CoverageResult",
     "Continuation",
     "End",
@@ -94,6 +95,7 @@ __all__ = [
     "check_wf_parallel",
     "classify_morphism",
     "compute_coverage",
+    "incremental_coverage",
     "compute_join",
     "compute_meet",
     "desugar",
