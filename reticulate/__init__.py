@@ -65,6 +65,11 @@ from reticulate.testgen import (
     enumerate_client_programs,
     generate_test_source,
 )
+from reticulate.duality import (
+    DualityResult,
+    check_duality,
+    dual,
+)
 from reticulate.subtyping import (
     SubtypingResult,
     WidthSubtypingResult,
@@ -111,6 +116,9 @@ __all__ = [
     "coverage_storyboard",
     "compute_join",
     "compute_meet",
+    "DualityResult",
+    "check_duality",
+    "dual",
     "desugar",
     "dot_source",
     "ensugar",
