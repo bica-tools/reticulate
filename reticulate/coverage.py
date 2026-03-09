@@ -174,7 +174,6 @@ def coverage_storyboard(
     if not all_transitions:
         return []
 
-    covered: set[tuple[int, str, int]] = set()
     frames: list[CoverageFrame] = []
 
     # 1. Valid paths (client programs)
@@ -182,34 +181,36 @@ def coverage_storyboard(
     for program in programs:
         suffix = client_program_name_suffix(program) or "empty"
         name = f"validPath_{suffix}"
-        # Walk the program's flattened steps
-        _collect_from_client_program(ss.top, program, all_transitions, covered)
+        this_covered: set[tuple[int, str, int]] = set()
+        _collect_from_client_program(ss.top, program, all_transitions, this_covered)
         frames.append(CoverageFrame(
             test_name=name,
             test_kind="valid",
-            coverage=_build_coverage(ss, all_transitions, covered),
+            coverage=_build_coverage(ss, all_transitions, this_covered),
         ))
 
     # 2. Violations
     for v in result.violations:
-        _collect_transitions(ss.top, v.prefix_path, all_transitions, covered)
+        this_covered = set()
+        _collect_transitions(ss.top, v.prefix_path, all_transitions, this_covered)
         prefix_labels = v.prefix_labels
         suffix = (("initial_" + v.disabled_method) if not prefix_labels
                   else "_".join(prefix_labels) + "_" + v.disabled_method)
         frames.append(CoverageFrame(
             test_name=f"violation_{suffix}",
             test_kind="violation",
-            coverage=_build_coverage(ss, all_transitions, covered),
+            coverage=_build_coverage(ss, all_transitions, this_covered),
         ))
 
     # 3. Incomplete prefixes
     for p in result.incomplete_prefixes:
-        _collect_transitions(ss.top, p.steps, all_transitions, covered)
+        this_covered = set()
+        _collect_transitions(ss.top, p.steps, all_transitions, this_covered)
         suffix = "_".join(p.labels)
         frames.append(CoverageFrame(
             test_name=f"incomplete_{suffix}",
             test_kind="incomplete",
-            coverage=_build_coverage(ss, all_transitions, covered),
+            coverage=_build_coverage(ss, all_transitions, this_covered),
         ))
 
     return frames

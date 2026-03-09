@@ -364,19 +364,28 @@ class TestCoverageStoryboard:
         violation_names = [n for n in names if n.startswith("violation_")]
         assert len(violation_names) > 0
 
-    def test_coverage_monotonically_increases(self):
+    def test_each_frame_is_independent(self):
         s = ss("&{m: &{a: end}, n: &{b: end}}")
         result = enumerate(s, TestGenConfig(class_name="T"))
         frames = coverage_storyboard(s, result)
-        coverages = [f.coverage.transition_coverage for f in frames]
-        for i in range(1, len(coverages)):
-            assert coverages[i] >= coverages[i - 1]
+        # Valid paths should each cover only their own transitions
+        valid_frames = [f for f in frames if f.test_kind == "valid"]
+        assert len(valid_frames) >= 2
+        # Each valid path covers only part of the transitions
+        for f in valid_frames:
+            assert f.coverage.transition_coverage < 1.0
 
-    def test_last_frame_full_coverage(self):
-        s = ss("&{m: end, n: end}")
+    def test_valid_path_covers_own_transitions(self):
+        s = ss("&{m: &{a: end}, n: &{b: end}}")
         result = enumerate(s, TestGenConfig(class_name="T"))
         frames = coverage_storyboard(s, result)
-        assert frames[-1].coverage.transition_coverage == pytest.approx(1.0)
+        # Find the m_a path frame
+        ma_frame = next(f for f in frames if "m_a" in f.test_name)
+        covered_labels = {lbl for (_, lbl, _) in ma_frame.coverage.covered_transitions}
+        assert "m" in covered_labels
+        assert "a" in covered_labels
+        assert "n" not in covered_labels
+        assert "b" not in covered_labels
 
     def test_valid_before_violations_before_incomplete(self):
         s = ss("&{m: &{a: end}, n: &{b: end}}")
@@ -404,14 +413,17 @@ class TestCoverageStoryboard:
         result = enumerate(s, TestGenConfig(class_name="T"))
         frames = coverage_storyboard(s, result)
         assert len(frames) > 0
-        assert frames[-1].coverage.transition_coverage == pytest.approx(1.0)
+        # Each frame shows its own coverage, not cumulative
+        for f in frames:
+            assert 0.0 <= f.coverage.transition_coverage <= 1.0
 
     def test_parallel_storyboard(self):
         s = ss("(&{a: end} || &{b: end})")
         result = enumerate(s, TestGenConfig(class_name="T"))
         frames = coverage_storyboard(s, result)
         assert len(frames) > 0
-        assert frames[-1].coverage.transition_coverage == pytest.approx(1.0)
+        for f in frames:
+            assert 0.0 <= f.coverage.transition_coverage <= 1.0
 
 
 # =========================================================================
