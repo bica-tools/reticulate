@@ -145,6 +145,12 @@ from reticulate.composition import (
     synchronized_compose,
     synchronized_product,
 )
+from reticulate.composition_viz import (
+    composition_dashboard,
+    level_dot,
+    participant_dot,
+    synchronized_dot,
+)
 from reticulate.context_free import (
     ChomskyClassification,
     analyze_trace_language,
@@ -285,6 +291,10 @@ __all__ = [
     "product_nary",
     "synchronized_compose",
     "synchronized_product",
+    "composition_dashboard",
+    "level_dot",
+    "participant_dot",
+    "synchronized_dot",
     "role_dot_source",
     "role_hasse_diagram",
     "role_render_hasse",
