@@ -591,4 +591,59 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=2,
         uses_parallel=True,
     ),
+    # 35. Carnot Cycle
+    BenchmarkProtocol(
+        name="Carnot Cycle",
+        type_string=(
+            "rec X . &{isothermal_expand: &{adiabatic_expand: "
+            "&{isothermal_compress: &{adiabatic_compress: X, stop: end}}}}"
+        ),
+        description=(
+            "A Carnot thermodynamic engine as a session type: four-stroke "
+            "cycle (isothermal expand, adiabatic expand, isothermal compress, "
+            "adiabatic compress) with optional stop. Entropy is the "
+            "order-embedding of the state-space reachability into R."
+        ),
+        expected_states=5,
+        expected_transitions=5,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 36. Quantum Measurement
+    BenchmarkProtocol(
+        name="Quantum Measurement",
+        type_string=(
+            "&{prepare: &{measure_x: +{up_x: &{measure_z: end}, "
+            "down_x: &{measure_z: end}}, "
+            "measure_z: +{up_z: &{measure_x: end}, "
+            "down_z: &{measure_x: end}}}}"
+        ),
+        description=(
+            "Sequential spin measurements on a qubit: prepare, then choose "
+            "measurement basis (X or Z). Non-commutativity of observables "
+            "means path order matters — swapping bases gives isomorphic but "
+            "distinct state spaces. Inspired by Birkhoff-von Neumann (1936)."
+        ),
+        expected_states=9,
+        expected_transitions=11,
+        expected_sccs=9,
+        uses_parallel=False,
+    ),
+    # 37. Billiard Map
+    BenchmarkProtocol(
+        name="Billiard Map",
+        type_string=(
+            "rec X . &{reflect_north: X, reflect_south: X, "
+            "reflect_east: X, reflect_west: X, exit: end}"
+        ),
+        description=(
+            "A 2D billiard table as a session type: periodic orbits as "
+            "recursive reflections off four walls. Ergodic decomposition "
+            "of the state space corresponds to bisimulation quotient."
+        ),
+        expected_states=2,
+        expected_transitions=5,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
 ]

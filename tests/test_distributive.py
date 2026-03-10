@@ -1,6 +1,6 @@
 """Tests for distributivity checking (Step 6a: Birkhoff-inspired).
 
-Tests the check_distributive function on all 34 benchmarks and on
+Tests the check_distributive function on all 37 benchmarks and on
 hand-crafted lattices known to be distributive or non-distributive.
 """
 
@@ -20,7 +20,7 @@ from tests.benchmarks.protocols import BENCHMARKS
 # ---------------------------------------------------------------------------
 
 class TestBenchmarkDistributivity:
-    """Run distributivity check on all 34 benchmark protocols."""
+    """Run distributivity check on all 37 benchmark protocols."""
 
     @pytest.mark.parametrize(
         "bench",
@@ -36,11 +36,12 @@ class TestBenchmarkDistributivity:
 
     # Benchmarks empirically confirmed as non-distributive (contain N₅):
     NON_DISTRIBUTIVE = {
-        "Two-Buyer",           # parallel, has N₅
-        "Reticulate Pipeline", # parallel, has N₅
-        "TLS Handshake",       # no parallel, has N₅
-        "Saga Orchestrator",   # parallel, has N₅
-        "Two-Phase Commit",    # no parallel, has N₅
+        "Two-Buyer",              # parallel, has N₅
+        "Reticulate Pipeline",    # parallel, has N₅
+        "TLS Handshake",          # no parallel, has N₅
+        "Saga Orchestrator",      # parallel, has N₅
+        "Two-Phase Commit",       # no parallel, has N₅
+        "Quantum Measurement",    # no parallel, has N₅ — non-commutativity of observables
     }
 
     @pytest.mark.parametrize(
@@ -158,14 +159,14 @@ class TestClassification:
 class TestModularity:
     """Test modular lattice detection."""
 
-    # 5 benchmarks are known to be non-modular (contain N₅)
+    # 6 benchmarks are known to be non-modular (contain N₅)
     NON_MODULAR = {
         "Two-Buyer", "Reticulate Pipeline", "TLS Handshake",
-        "Saga Orchestrator", "Two-Phase Commit",
+        "Saga Orchestrator", "Two-Phase Commit", "Quantum Measurement",
     }
 
     def test_modular_benchmarks(self):
-        """29/34 benchmarks should be modular (no N₅)."""
+        """31/37 benchmarks should be modular (no N₅)."""
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
             ss = build_statespace(ast)
@@ -185,7 +186,7 @@ class TestSummaryReport:
     """Generate a summary report of distributivity across all benchmarks."""
 
     def test_print_summary(self):
-        """Print classification summary for all 34 benchmarks."""
+        """Print classification summary for all 37 benchmarks."""
         results = []
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
@@ -221,8 +222,8 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 29/34 distributive, 5/34 non-modular (N₅)
-        assert n_bool + n_dist == 29, (
-            f"Expected 29 distributive, got {n_bool + n_dist}"
+        # Empirical result: 31/37 distributive, 6/37 non-modular (N₅)
+        assert n_bool + n_dist == 31, (
+            f"Expected 31 distributive, got {n_bool + n_dist}"
         )
-        assert n_lat == 5, f"Expected 5 lattice-only, got {n_lat}"
+        assert n_lat == 6, f"Expected 6 lattice-only, got {n_lat}"
