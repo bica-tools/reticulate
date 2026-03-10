@@ -1,6 +1,6 @@
 """Tests for distributivity checking (Step 6a: Birkhoff-inspired).
 
-Tests the check_distributive function on all 37 benchmarks and on
+Tests the check_distributive function on all 39 benchmarks and on
 hand-crafted lattices known to be distributive or non-distributive.
 """
 
@@ -42,6 +42,7 @@ class TestBenchmarkDistributivity:
         "Saga Orchestrator",      # parallel, has N₅
         "Two-Phase Commit",       # no parallel, has N₅
         "Quantum Measurement",    # no parallel, has N₅ — non-commutativity of observables
+        "Ki3 Onboarding",         # parallel, has N₅ — selection+parallel interaction
     }
 
     @pytest.mark.parametrize(
@@ -159,14 +160,15 @@ class TestClassification:
 class TestModularity:
     """Test modular lattice detection."""
 
-    # 6 benchmarks are known to be non-modular (contain N₅)
+    # 7 benchmarks are known to be non-modular (contain N₅)
     NON_MODULAR = {
         "Two-Buyer", "Reticulate Pipeline", "TLS Handshake",
         "Saga Orchestrator", "Two-Phase Commit", "Quantum Measurement",
+        "Ki3 Onboarding",
     }
 
     def test_modular_benchmarks(self):
-        """31/37 benchmarks should be modular (no N₅)."""
+        """32/39 benchmarks should be modular (no N₅)."""
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
             ss = build_statespace(ast)
@@ -186,7 +188,7 @@ class TestSummaryReport:
     """Generate a summary report of distributivity across all benchmarks."""
 
     def test_print_summary(self):
-        """Print classification summary for all 37 benchmarks."""
+        """Print classification summary for all 39 benchmarks."""
         results = []
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
@@ -222,8 +224,8 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 31/37 distributive, 6/37 non-modular (N₅)
-        assert n_bool + n_dist == 31, (
-            f"Expected 31 distributive, got {n_bool + n_dist}"
+        # Empirical result: 32/39 distributive, 7/39 non-modular (N₅)
+        assert n_bool + n_dist == 32, (
+            f"Expected 32 distributive, got {n_bool + n_dist}"
         )
-        assert n_lat == 6, f"Expected 6 lattice-only, got {n_lat}"
+        assert n_lat == 7, f"Expected 7 lattice-only, got {n_lat}"

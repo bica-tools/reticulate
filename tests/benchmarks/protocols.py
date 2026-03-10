@@ -591,7 +591,59 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=2,
         uses_parallel=True,
     ),
-    # 35. Carnot Cycle
+    # 35. Ki3 Onboarding (Tenant Provisioning)
+    BenchmarkProtocol(
+        name="Ki3 Onboarding",
+        type_string=(
+            "&{validateContract: +{APPROVED: "
+            "(&{createVPS: +{PROVISIONED: wait, FAILED: wait}} || "
+            "&{configureDNS: +{PROPAGATED: wait, FAILED: wait}}) . "
+            "&{createKeycloakRealm: +{CREATED: "
+            "(&{createSchema: &{seedData: wait}} || "
+            "&{configureProxy: &{requestSSL: wait}}) . "
+            "(&{setupMonitoring: &{createDashboards: wait}} || "
+            "&{configureBackup: wait}) . "
+            "&{runHealthChecks: +{HEALTHY: &{notifyTenant: "
+            "&{activateSubscription: end}}, "
+            "UNHEALTHY: &{rollback: &{notifyOps: end}}}}, "
+            "FAILED: end}}, "
+            "REJECTED: end}}"
+        ),
+        description=(
+            "Ki3 SaaS tenant provisioning (Berlin daycare platform). "
+            "Two-phase parallel: Phase 1 provisions VPS and DNS concurrently, "
+            "then Phase 2 deploys database, proxy, monitoring, and backups "
+            "concurrently. Health checks branch to activation or rollback. "
+            "Real production system at ki3.tech."
+        ),
+        expected_states=32,
+        expected_transitions=50,
+        expected_sccs=32,
+        uses_parallel=True,
+    ),
+    # 36. Ki3 Offboarding (Tenant Teardown)
+    BenchmarkProtocol(
+        name="Ki3 Offboarding",
+        type_string=(
+            "&{confirmCancellation: &{exportData: &{notifyTenant: "
+            "(&{removeMonitoring: wait} || &{removeBackup: wait}) . "
+            "(&{revokeSSL: wait} || &{deleteSchema: wait}) . "
+            "(&{deleteKeycloakRealm: wait} || &{removeDNS: wait}) . "
+            "&{deleteVPS: &{archiveAuditLog: &{closeSubscription: end}}}}}}"
+        ),
+        description=(
+            "Ki3 SaaS tenant offboarding (reverse of onboarding). "
+            "Three parallel teardown phases: services first (monitoring, backups), "
+            "then middleware (SSL, database), then infrastructure (Keycloak, DNS), "
+            "finally VPS deletion and audit archival. Order ensures dependencies "
+            "are removed before their providers."
+        ),
+        expected_states=16,
+        expected_transitions=18,
+        expected_sccs=16,
+        uses_parallel=True,
+    ),
+    # 37. Carnot Cycle (formerly #35)
     BenchmarkProtocol(
         name="Carnot Cycle",
         type_string=(
