@@ -38,12 +38,20 @@ def dot_source(
     labels: bool = True,
     edge_labels: bool = True,
     coverage: CoverageResult | None = None,
+    node_style: str = "default",
 ) -> str:
     """Return DOT source string for the Hasse diagram of *ss*.
 
     No external dependencies — always available.
+
+    Parameters:
+        node_style: ``"default"`` for labelled boxes, ``"constructor"`` for
+            circles showing session type constructor symbols
+            (``&``, ``⊕``, ``∥``, ``end``).
     """
-    return _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels, coverage=coverage)
+    return _build_dot(ss, result, title=title, labels=labels,
+                      edge_labels=edge_labels, coverage=coverage,
+                      node_style=node_style)
 
 
 def hasse_diagram(
@@ -54,6 +62,7 @@ def hasse_diagram(
     labels: bool = True,
     edge_labels: bool = True,
     coverage: CoverageResult | None = None,
+    node_style: str = "default",
 ) -> "graphviz.Digraph":  # type: ignore[name-defined]
     """Build a Graphviz ``Digraph`` for the Hasse diagram of *ss*.
 
@@ -69,7 +78,9 @@ def hasse_diagram(
             "Install it with: pip install graphviz"
         ) from None
 
-    src = _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels, coverage=coverage)
+    src = _build_dot(ss, result, title=title, labels=labels,
+                     edge_labels=edge_labels, coverage=coverage,
+                     node_style=node_style)
     return graphviz.Source(src)
 
 
@@ -83,6 +94,7 @@ def render_hasse(
     labels: bool = True,
     edge_labels: bool = True,
     coverage: CoverageResult | None = None,
+    node_style: str = "default",
 ) -> str:
     """Render Hasse diagram to file.  Returns the output file path."""
     try:
@@ -93,7 +105,9 @@ def render_hasse(
             "Install it with: pip install graphviz"
         ) from None
 
-    src = _build_dot(ss, result, title=title, labels=labels, edge_labels=edge_labels, coverage=coverage)
+    src = _build_dot(ss, result, title=title, labels=labels,
+                     edge_labels=edge_labels, coverage=coverage,
+                     node_style=node_style)
     g = graphviz.Source(src)
     return g.render(filename=path, format=fmt, cleanup=True)
 
@@ -121,11 +135,16 @@ def _build_dot(
     labels: bool,
     edge_labels: bool,
     coverage: CoverageResult | None = None,
+    node_style: str = "default",
 ) -> str:
     lines: list[str] = []
     lines.append("digraph {")
     lines.append("    rankdir=TB;")
-    lines.append('    node [shape=box, style="filled,rounded", fontname="Helvetica"];')
+    if node_style == "constructor":
+        lines.append('    node [shape=circle, style=filled, fontname="Helvetica", '
+                      'width=0.4, fixedsize=true, fontsize=14];')
+    else:
+        lines.append('    node [shape=box, style="filled,rounded", fontname="Helvetica"];')
     lines.append('    edge [fontname="Helvetica", fontsize=10];')
 
     if title is not None:
@@ -140,9 +159,9 @@ def _build_dot(
         counter_states.add(result.counterexample[1])
 
     if result is not None:
-        _build_dot_with_result(ss, result, lines, labels, edge_labels, counter_states, coverage)
+        _build_dot_with_result(ss, result, lines, labels, edge_labels, counter_states, coverage, node_style)
     else:
-        _build_dot_plain(ss, lines, labels, edge_labels, coverage)
+        _build_dot_plain(ss, lines, labels, edge_labels, coverage, node_style)
 
     # Pin top and bottom to the top and bottom of the layout
     lines.append(f'    {{rank=source; {ss.top}}}')
@@ -158,11 +177,15 @@ def _build_dot_plain(
     labels: bool,
     edge_labels: bool,
     coverage: CoverageResult | None = None,
+    node_style: str = "default",
 ) -> None:
     """Add nodes/edges without SCC collapsing."""
     for sid in sorted(ss.states):
-        node_label = _node_label(ss, sid, labels)
-        attrs = _node_attrs(ss, sid, node_label)
+        if node_style == "constructor":
+            attrs = _node_attrs_constructor(ss, sid)
+        else:
+            node_label = _node_label(ss, sid, labels)
+            attrs = _node_attrs(ss, sid, node_label)
         if coverage is not None and sid in coverage.uncovered_states and sid not in (ss.top, ss.bottom):
             attrs["fillcolor"] = "#fee2e2"
         lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
@@ -171,6 +194,9 @@ def _build_dot_plain(
         edge_attrs: dict[str, str] = {}
         if edge_labels:
             edge_attrs["label"] = lbl
+        # In constructor mode, mark selection edges as dashed
+        if node_style == "constructor" and ss.is_selection(src, lbl, tgt):
+            edge_attrs["style"] = "dashed"
         _apply_coverage_edge_attrs(edge_attrs, coverage, src, lbl, tgt)
         lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 
@@ -183,11 +209,15 @@ def _build_dot_with_result(
     edge_labels: bool,
     counter_states: set[int],
     coverage: CoverageResult | None = None,
+    node_style: str = "default",
 ) -> None:
     """Add all nodes/edges with counterexample highlighting."""
     for sid in sorted(ss.states):
-        node_label = _node_label(ss, sid, labels)
-        attrs = _node_attrs(ss, sid, node_label)
+        if node_style == "constructor":
+            attrs = _node_attrs_constructor(ss, sid)
+        else:
+            node_label = _node_label(ss, sid, labels)
+            attrs = _node_attrs(ss, sid, node_label)
 
         # Counterexample highlight
         if sid in counter_states:
@@ -203,6 +233,9 @@ def _build_dot_with_result(
         edge_attrs: dict[str, str] = {}
         if edge_labels:
             edge_attrs["label"] = lbl
+        # In constructor mode, mark selection edges as dashed
+        if node_style == "constructor" and ss.is_selection(src, lbl, tgt):
+            edge_attrs["style"] = "dashed"
         _apply_coverage_edge_attrs(edge_attrs, coverage, src, lbl, tgt)
         lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 
@@ -210,6 +243,50 @@ def _build_dot_with_result(
 # ---------------------------------------------------------------------------
 # Internal: node helpers
 # ---------------------------------------------------------------------------
+
+# Constructor classification symbols and colors
+_CONSTRUCTOR_SYMBOLS: dict[str, str] = {
+    "branch": "&",
+    "select": "\u2295",    # ⊕
+    "parallel": "\u2225",  # ∥
+    "end": "\u22a5",       # ⊥
+    "top": "\u22a4",       # ⊤
+}
+
+_CONSTRUCTOR_COLORS: dict[str, str] = {
+    "branch": "#bfdbfe",    # blue
+    "select": "#fde68a",    # amber
+    "parallel": "#d9f99d",  # lime
+    "end": "#bbf7d0",       # green
+    "top": "#bfdbfe",       # blue
+}
+
+
+def _classify_constructor(ss: StateSpace, sid: int) -> str:
+    """Classify a state by its session type constructor.
+
+    Returns one of: "top", "end", "select", "parallel", "branch".
+    """
+    if sid == ss.bottom:
+        return "end"
+    if sid == ss.top:
+        return "top"
+
+    label = ss.labels.get(sid, "")
+
+    # Selection: label starts with +{ or any outgoing transition is a selection
+    if label.startswith("+{"):
+        return "select"
+    if any(ss.is_selection(s, l, t) for s, l, t in ss.transitions if s == sid):
+        return "select"
+
+    # Product (parallel): label is a tuple like "(left, right)"
+    if label.startswith("(") and "," in label:
+        return "parallel"
+
+    # Default: branch
+    return "branch"
+
 
 def _node_label(ss: StateSpace, sid: int, labels: bool) -> str:
     """Compute the display label for a node."""
@@ -236,6 +313,27 @@ def _node_attrs(ss: StateSpace, sid: int, label: str) -> dict[str, str]:
         attrs["fillcolor"] = "#bbf7d0"
     else:
         attrs["fillcolor"] = "#f8fafc"
+
+    return attrs
+
+
+def _node_attrs_constructor(ss: StateSpace, sid: int) -> dict[str, str]:
+    """Build attribute dict for constructor-style node (circle with symbol)."""
+    kind = _classify_constructor(ss, sid)
+    symbol = _CONSTRUCTOR_SYMBOLS[kind]
+    color = _CONSTRUCTOR_COLORS[kind]
+
+    attrs: dict[str, str] = {
+        "label": symbol,
+        "fillcolor": color,
+    }
+
+    # Make end/top slightly different
+    if kind == "end":
+        attrs["shape"] = "doublecircle"
+        attrs["width"] = "0.35"
+    elif kind == "top":
+        attrs["penwidth"] = "2"
 
     return attrs
 

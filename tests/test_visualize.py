@@ -206,6 +206,76 @@ class TestDotSourceTruncation:
 
 
 # ---------------------------------------------------------------------------
+# Constructor node style tests
+# ---------------------------------------------------------------------------
+
+class TestConstructorNodeStyle:
+    """Tests for node_style='constructor'."""
+
+    def test_constructor_circles(self) -> None:
+        dot = _dot("&{a: end}", node_style="constructor")
+        assert "shape=circle" in dot
+
+    def test_branch_symbol(self) -> None:
+        dot = _dot("&{a: &{b: end}}", node_style="constructor")
+        # The intermediate branch state should have & label
+        assert 'label="&"' in dot
+
+    def test_select_symbol(self) -> None:
+        dot = _dot("&{a: +{OK: end, ERR: end}}", node_style="constructor")
+        assert "\u2295" in dot  # ⊕
+
+    def test_parallel_symbol(self) -> None:
+        dot = _dot("(&{a: end} || &{b: end})", node_style="constructor")
+        assert "\u2225" in dot  # ∥
+
+    def test_end_double_circle(self) -> None:
+        dot = _dot("end", node_style="constructor")
+        assert "doublecircle" in dot
+
+    def test_top_symbol(self) -> None:
+        dot = _dot("&{a: end}", node_style="constructor")
+        assert "\u22a4" in dot  # ⊤
+
+    def test_bottom_symbol(self) -> None:
+        dot = _dot("&{a: end}", node_style="constructor")
+        assert "\u22a5" in dot  # ⊥
+
+    def test_selection_edges_dashed(self) -> None:
+        dot = _dot("&{a: +{OK: end, ERR: end}}", node_style="constructor")
+        assert "dashed" in dot
+
+    def test_with_result(self) -> None:
+        dot = _dot_with_result("&{a: +{OK: end, ERR: end}}", node_style="constructor")
+        assert "shape=circle" in dot
+        assert "\u2295" in dot
+
+    def test_ki3_onboarding(self) -> None:
+        """Ki3 onboarding renders in constructor mode without errors."""
+        type_str = (
+            "&{validateContract: +{APPROVED: "
+            "(&{createVPS: +{PROVISIONED: wait, FAILED: wait}} || "
+            "&{configureDNS: +{PROPAGATED: wait, FAILED: wait}}) . "
+            "&{createKeycloakRealm: +{CREATED: "
+            "(&{createSchema: &{seedData: wait}} || "
+            "&{configureProxy: &{requestSSL: wait}}) . "
+            "(&{setupMonitoring: &{createDashboards: wait}} || "
+            "&{configureBackup: wait}) . "
+            "&{runHealthChecks: +{HEALTHY: &{notifyTenant: "
+            "&{activateSubscription: end}}, "
+            "UNHEALTHY: &{rollback: &{notifyOps: end}}}}, "
+            "FAILED: end}}, "
+            "REJECTED: end}}"
+        )
+        dot = _dot_with_result(type_str, node_style="constructor")
+        assert "shape=circle" in dot
+        # Should have branch, select, and parallel nodes
+        assert "\u2295" in dot  # ⊕ (select)
+        assert "\u2225" in dot  # ∥ (parallel)
+        assert "&" in dot       # branch
+
+
+# ---------------------------------------------------------------------------
 # hasse_diagram tests (require graphviz)
 # ---------------------------------------------------------------------------
 
