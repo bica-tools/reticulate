@@ -134,6 +134,14 @@ from reticulate.recursion import (
     unfold,
     unfold_depth,
 )
+from reticulate.composition import (
+    ComparisonResult,
+    CompositionResult,
+    check_compatibility,
+    compare_with_global,
+    compose,
+    product_nary,
+)
 from reticulate.context_free import (
     ChomskyClassification,
     analyze_trace_language,
@@ -265,6 +273,12 @@ __all__ = [
     "has_continuation_recursion",
     "is_regular",
     "stack_depth_bound",
+    "ComparisonResult",
+    "CompositionResult",
+    "check_compatibility",
+    "compare_with_global",
+    "compose",
+    "product_nary",
     "role_dot_source",
     "role_hasse_diagram",
     "role_render_hasse",
