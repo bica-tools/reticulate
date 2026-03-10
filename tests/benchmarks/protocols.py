@@ -698,4 +698,44 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=2,
         uses_parallel=False,
     ),
+
+    # 38. Ki3 CI/CD Pipeline (Dev → Staging → Production)
+    BenchmarkProtocol(
+        name="Ki3 CI/CD Pipeline",
+        type_string=(
+            "(&{lintBackend: +{PASS: wait, FAIL: wait}} || "
+            "&{lintFrontend: +{PASS: wait, FAIL: wait}}) . "
+            "+{LINT_OK: "
+            "(&{testBackend: +{PASS: wait, FAIL: wait}} || "
+            "&{testFrontend: +{PASS: wait, FAIL: wait}}) . "
+            "+{TESTS_OK: "
+            "(&{buildBackend: +{PUSHED: wait, FAIL: wait}} || "
+            "&{buildFrontend: +{PUSHED: wait, FAIL: wait}}) . "
+            "+{IMAGES_OK: "
+            "&{securityScan: +{CLEAN: "
+            "&{deployStaging: +{HEALTHY: "
+            "&{e2eSmoke: +{PASS: "
+            "&{approveProduction: +{APPROVED: "
+            "&{deployProduction: +{HEALTHY: end, "
+            "UNHEALTHY: &{rollbackProduction: end}}}, "
+            "REJECTED: end}}, "
+            "FAIL: &{rollbackStaging: end}}}, "
+            "UNHEALTHY: &{rollbackStaging: end}}}, "
+            "CRITICAL: end}}, "
+            "BUILD_FAIL: end}, "
+            "TEST_FAIL: end}, "
+            "LINT_FAIL: end}"
+        ),
+        description=(
+            "Ki3 multi-tenant SaaS CI/CD pipeline: parallel lint, parallel "
+            "test, parallel Docker build, security scan, staging deploy with "
+            "health check, E2E smoke tests, manual production approval, "
+            "production deploy with rollback. Three parallel phases model "
+            "concurrent backend/frontend pipelines."
+        ),
+        expected_states=41,
+        expected_transitions=78,
+        expected_sccs=41,
+        uses_parallel=True,
+    ),
 ]

@@ -43,6 +43,7 @@ class TestBenchmarkDistributivity:
         "Two-Phase Commit",       # no parallel, has N₅
         "Quantum Measurement",    # no parallel, has N₅ — non-commutativity of observables
         "Ki3 Onboarding",         # parallel, has N₅ — selection+parallel interaction
+        "Ki3 CI/CD Pipeline",     # parallel, has N₅ — selection+parallel interaction
     }
 
     @pytest.mark.parametrize(
@@ -165,10 +166,11 @@ class TestModularity:
         "Two-Buyer", "Reticulate Pipeline", "TLS Handshake",
         "Saga Orchestrator", "Two-Phase Commit", "Quantum Measurement",
         "Ki3 Onboarding",
+        "Ki3 CI/CD Pipeline",
     }
 
     def test_modular_benchmarks(self):
-        """32/39 benchmarks should be modular (no N₅)."""
+        """32/40 benchmarks should be modular (no N₅)."""
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
             ss = build_statespace(ast)
@@ -224,8 +226,8 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 32/39 distributive, 7/39 non-modular (N₅)
+        # Empirical result: 32/40 distributive, 8/40 non-modular (N₅)
         assert n_bool + n_dist == 32, (
             f"Expected 32 distributive, got {n_bool + n_dist}"
         )
-        assert n_lat == 7, f"Expected 7 lattice-only, got {n_lat}"
+        assert n_lat == 8, f"Expected 8 lattice-only, got {n_lat}"
