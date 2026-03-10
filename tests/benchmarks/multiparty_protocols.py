@@ -130,4 +130,210 @@ MULTIPARTY_BENCHMARKS: list[MultipartyBenchmark] = [
         ),
         expected_roles=frozenset({"Client", "Server"}),
     ),
+    # 9. OAuth 2.0 (3 roles)
+    MultipartyBenchmark(
+        name="OAuth2",
+        global_type_string=(
+            "Client -> AuthServer : {authorize: "
+            "AuthServer -> Client : {code: "
+            "Client -> AuthServer : {exchange: "
+            "AuthServer -> Client : {token: "
+            "Client -> ResourceServer : {access: "
+            "ResourceServer -> Client : {resource: end}}}}}}"
+        ),
+        description=(
+            "OAuth 2.0 authorization code flow: Client gets auth code from "
+            "AuthServer, exchanges for token, then accesses ResourceServer."
+        ),
+        expected_roles=frozenset({"Client", "AuthServer", "ResourceServer"}),
+    ),
+    # 10. MCP (3 roles: Host, Client, Server)
+    MultipartyBenchmark(
+        name="MCP",
+        global_type_string=(
+            "Host -> Client : {initialize: "
+            "Client -> Server : {discover: "
+            "Server -> Client : {tools: "
+            "Client -> Host : {ready: "
+            "rec X . Client -> Server : {call: "
+            "Server -> Client : {result: X}, "
+            "done: end}}}}}"
+        ),
+        description=(
+            "Model Context Protocol: Host initializes Client, Client discovers "
+            "tools on Server, then repeatedly calls tools and reports to Host."
+        ),
+        expected_roles=frozenset({"Host", "Client", "Server"}),
+    ),
+    # 11. A2A (3 roles: Client, RemoteAgent, TaskStore)
+    MultipartyBenchmark(
+        name="A2A",
+        global_type_string=(
+            "Client -> RemoteAgent : {sendTask: "
+            "RemoteAgent -> TaskStore : {store: "
+            "TaskStore -> RemoteAgent : {ack: "
+            "RemoteAgent -> Client : {status: "
+            "Client -> RemoteAgent : {getResult: "
+            "RemoteAgent -> TaskStore : {fetch: "
+            "TaskStore -> RemoteAgent : {artifact: "
+            "RemoteAgent -> Client : {result: end}}}}}}}}"
+        ),
+        description=(
+            "Agent-to-Agent protocol: Client sends task to RemoteAgent, "
+            "agent stores artifacts in TaskStore, Client retrieves result."
+        ),
+        expected_roles=frozenset({"Client", "RemoteAgent", "TaskStore"}),
+    ),
+    # 12. MQTT (3 roles: Publisher, Broker, Subscriber)
+    MultipartyBenchmark(
+        name="MQTT",
+        global_type_string=(
+            "Subscriber -> Broker : {subscribe: "
+            "Broker -> Subscriber : {suback: "
+            "Publisher -> Broker : {publish: "
+            "Broker -> Subscriber : {deliver: "
+            "Subscriber -> Broker : {puback: "
+            "Publisher -> Broker : {disconnect: end}}}}}}"
+        ),
+        description=(
+            "MQTT pub/sub: Subscriber subscribes to Broker, then Publisher "
+            "repeatedly publishes messages that Broker delivers to Subscriber."
+        ),
+        expected_roles=frozenset({"Publisher", "Broker", "Subscriber"}),
+    ),
+    # 13. Raft Consensus (3 roles: Candidate, Voter, Leader)
+    MultipartyBenchmark(
+        name="Raft-Consensus",
+        global_type_string=(
+            "Candidate -> Voter : {requestVote: "
+            "Voter -> Candidate : {granted: "
+            "Candidate -> Voter : {appendEntries: "
+            "Voter -> Candidate : {ack: end}}, "
+            "rejected: end}}"
+        ),
+        description=(
+            "Raft consensus: Candidate requests vote from Voter, if granted "
+            "becomes leader and sends AppendEntries, otherwise election fails."
+        ),
+        expected_roles=frozenset({"Candidate", "Voter"}),
+    ),
+    # 14. Saga (4 roles: Orchestrator, Service1, Service2, CompLog)
+    MultipartyBenchmark(
+        name="Saga",
+        global_type_string=(
+            "Orchestrator -> Service1 : {execute: "
+            "Service1 -> Orchestrator : {done1: "
+            "Orchestrator -> CompLog : {log1: "
+            "Orchestrator -> Service2 : {execute: "
+            "Service2 -> Orchestrator : {done2: "
+            "Orchestrator -> CompLog : {log2: "
+            "Orchestrator -> CompLog : {commit: end}}}}}}}"
+        ),
+        description=(
+            "Saga pattern: Orchestrator coordinates Service1 and Service2 "
+            "with compensation logging. On failure, compensates in reverse."
+        ),
+        expected_roles=frozenset(
+            {"Orchestrator", "Service1", "Service2", "CompLog"}
+        ),
+    ),
+    # 15. DNS Resolution (3 roles: Client, Resolver, AuthNS)
+    MultipartyBenchmark(
+        name="DNS-Resolution",
+        global_type_string=(
+            "Client -> Resolver : {query: "
+            "Resolver -> AuthNS : {lookup: "
+            "AuthNS -> Resolver : {answer: "
+            "Resolver -> Client : {response: end}}}}"
+        ),
+        description=(
+            "DNS resolution: Client queries Resolver, Resolver queries "
+            "AuthoritativeNameServer, response propagates back."
+        ),
+        expected_roles=frozenset({"Client", "Resolver", "AuthNS"}),
+    ),
+    # 16. Payment Processing (4 roles: Customer, Merchant, Gateway, Bank)
+    MultipartyBenchmark(
+        name="Payment-Processing",
+        global_type_string=(
+            "Customer -> Merchant : {order: "
+            "Merchant -> Gateway : {charge: "
+            "Gateway -> Bank : {authorize: "
+            "Bank -> Gateway : {approved: "
+            "Gateway -> Merchant : {success: "
+            "Merchant -> Customer : {receipt: end}}}}}}"
+        ),
+        description=(
+            "Payment processing: Customer orders from Merchant, Merchant "
+            "charges via Gateway, Gateway authorizes with Bank."
+        ),
+        expected_roles=frozenset(
+            {"Customer", "Merchant", "Gateway", "Bank"}
+        ),
+    ),
+    # 17. Microservice Health (3 roles, parallel)
+    MultipartyBenchmark(
+        name="Microservice-Health",
+        global_type_string=(
+            "(Monitor -> ServiceA : {ping: "
+            "ServiceA -> Monitor : {pong: end}} || "
+            "Monitor -> ServiceB : {ping: "
+            "ServiceB -> Monitor : {pong: end}})"
+        ),
+        description=(
+            "Microservice health check: Monitor pings ServiceA and ServiceB "
+            "in parallel, both respond with pong."
+        ),
+        expected_roles=frozenset({"Monitor", "ServiceA", "ServiceB"}),
+    ),
+    # 18. Map-Reduce (3 roles)
+    MultipartyBenchmark(
+        name="Map-Reduce",
+        global_type_string=(
+            "Master -> Mapper : {map: "
+            "Mapper -> Reducer : {emit: "
+            "Reducer -> Master : {result: end}}}"
+        ),
+        description=(
+            "Map-Reduce: Master distributes work to Mapper, Mapper emits "
+            "intermediate results to Reducer, Reducer returns final result."
+        ),
+        expected_roles=frozenset({"Master", "Mapper", "Reducer"}),
+    ),
+    # 19. Supply Chain (4 roles)
+    MultipartyBenchmark(
+        name="Supply-Chain",
+        global_type_string=(
+            "Customer -> Retailer : {order: "
+            "Retailer -> Warehouse : {pick: "
+            "Warehouse -> Retailer : {ready: "
+            "Retailer -> Shipper : {ship: "
+            "Shipper -> Customer : {deliver: "
+            "Customer -> Shipper : {sign: "
+            "Shipper -> Retailer : {confirm: end}}}}}}}"
+        ),
+        description=(
+            "Supply chain: Customer orders from Retailer, Retailer picks "
+            "from Warehouse, Shipper delivers to Customer who signs."
+        ),
+        expected_roles=frozenset(
+            {"Customer", "Retailer", "Warehouse", "Shipper"}
+        ),
+    ),
+    # 20. Parallel Task Distribution (3 roles, parallel)
+    MultipartyBenchmark(
+        name="Parallel-Tasks",
+        global_type_string=(
+            "Master -> Worker : {init: "
+            "(Master -> Worker : {taskA: "
+            "Worker -> Master : {resultA: end}} || "
+            "Master -> Worker : {taskB: "
+            "Worker -> Master : {resultB: end}})}"
+        ),
+        description=(
+            "Parallel task distribution: Master initializes Worker, then "
+            "sends two independent tasks (A and B) in parallel."
+        ),
+        expected_roles=frozenset({"Master", "Worker"}),
+    ),
 ]
