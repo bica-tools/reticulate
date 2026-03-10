@@ -4,18 +4,28 @@ Instead of starting from a global type and projecting down (top-down MPST),
 this module composes independent session types (lattices) bottom-up:
 
     1. Each participant has an independent session type → lattice.
-    2. The composite state space is the N-ary product of individual lattices.
+    2. The composite state space is their product lattice.
     3. Compatibility is checked via duality on shared method labels.
     4. No global type needed — the product lattice IS the global state space.
 
-The key insight: in a free multiparty interaction, every participant is
-both an object and a client. Their lattices compose via products, and
-compatibility is verified via morphisms + duality.
+Two composition modes:
 
-**Inverse Projection Conjecture**: For a well-formed global type G with
-roles {r₁, ..., rₙ}, L(G) embeds into L(G↓r₁) × ... × L(G↓rₙ).
-The product may be strictly larger (it allows interleavings the global
-type forbids).
+    **Free product** (``compose``): All interleavings allowed. The product
+    is ``L₁ × L₂ × ... × Lₙ`` — every pair of states is reachable.
+    Over-approximates the true interaction space.
+
+    **Synchronized product** (``synchronized_compose``): Shared labels
+    require both participants to move simultaneously (sender selects,
+    receiver branches). Private labels advance one participant only.
+    This is a **space-time restriction**: the product state ``(s₁, s₂)``
+    is only reachable if the causal dependencies between participants
+    are respected. Reduces interleavings significantly.
+
+The hierarchy:
+
+    L(G)  ⊆  synchronized product  ⊆  free product
+
+    choreography ⊆ causal ⊆ all interleavings
 """
 
 from __future__ import annotations
@@ -51,6 +61,30 @@ class CompositionResult:
     product: "StateSpace"
     is_lattice: bool
     compatibility: dict[tuple[str, str], bool]
+
+
+@dataclass(frozen=True)
+class SynchronizedResult:
+    """Result of synchronized composition.
+
+    Attributes:
+        participants: name → session type mapping.
+        state_spaces: name → lattice mapping.
+        synchronized: the synchronized product state space.
+        free_product: the free product (all interleavings) for comparison.
+        is_lattice: True iff the synchronized product is a lattice.
+        compatibility: pairwise compatibility dict.
+        shared_labels: pairwise shared labels dict.
+        reduction_ratio: synchronized_states / free_product_states.
+    """
+    participants: dict[str, SessionType]
+    state_spaces: dict[str, "StateSpace"]
+    synchronized: "StateSpace"
+    free_product: "StateSpace"
+    is_lattice: bool
+    compatibility: dict[tuple[str, str], bool]
+    shared_labels: dict[tuple[str, str], set[str]]
+    reduction_ratio: float
 
 
 @dataclass(frozen=True)
@@ -256,9 +290,222 @@ def compare_with_global(
     )
 
 
+def synchronized_compose(
+    *participants: tuple[str, SessionType],
+) -> SynchronizedResult:
+    """Compose session types with synchronization on shared labels.
+
+    Unlike ``compose()`` (free product), shared method labels require both
+    participants to move simultaneously: one selects, the other branches.
+    Private labels advance only one participant.
+
+    This is a **space-time restriction**: product state (s₁, s₂) is only
+    reachable when causal dependencies are respected. A transition on a
+    shared label ``m`` from ``(s₁, s₂)`` requires:
+    - s₁ enables ``m`` (as selector) AND s₂ enables ``m`` (as offerer), or
+    - s₂ enables ``m`` (as selector) AND s₁ enables ``m`` (as offerer)
+
+    Both advance simultaneously: ``(s₁, s₂) --m--> (s₁', s₂')``.
+
+    Raises ValueError if fewer than 2 participants or non-lattice state spaces.
+    """
+    from reticulate.lattice import check_lattice
+    from reticulate.statespace import build_statespace
+
+    if len(participants) < 2:
+        raise ValueError("need at least two participants for synchronized composition")
+
+    participant_dict: dict[str, SessionType] = {}
+    state_spaces: dict[str, "StateSpace"] = {}
+
+    for name, stype in participants:
+        participant_dict[name] = stype
+        ss = build_statespace(stype)
+        lattice_result = check_lattice(ss)
+        if not lattice_result.is_lattice:
+            raise ValueError(
+                f"participant {name!r} state space is not a lattice"
+            )
+        state_spaces[name] = ss
+
+    names = [name for name, _ in participants]
+
+    # Compute pairwise shared labels and compatibility
+    compat: dict[tuple[str, str], bool] = {}
+    shared: dict[tuple[str, str], set[str]] = {}
+    for i, n1 in enumerate(names):
+        for n2 in names[i + 1:]:
+            compat[(n1, n2)] = check_compatibility(
+                participant_dict[n1], participant_dict[n2]
+            )
+            shared[(n1, n2)] = _shared_labels(
+                state_spaces[n1], state_spaces[n2]
+            )
+
+    # Build synchronized product via pairwise then chain
+    ss_list = [state_spaces[name] for name in names]
+    synced = _synchronized_product_nary(ss_list)
+
+    # Also build free product for comparison
+    free = product_nary(ss_list)
+
+    # Check lattice property
+    synced_lattice = check_lattice(synced)
+
+    ratio = (
+        len(synced.states) / len(free.states)
+        if len(free.states) > 0
+        else 1.0
+    )
+
+    return SynchronizedResult(
+        participants=participant_dict,
+        state_spaces=state_spaces,
+        synchronized=synced,
+        free_product=free,
+        is_lattice=synced_lattice.is_lattice,
+        compatibility=compat,
+        shared_labels=shared,
+        reduction_ratio=ratio,
+    )
+
+
+def synchronized_product(left: "StateSpace", right: "StateSpace") -> "StateSpace":
+    """Build the synchronized product of two state spaces.
+
+    Shared labels (appearing in both state spaces) require both components
+    to move simultaneously. Private labels advance only one component.
+
+    From state ``(s₁, s₂)``:
+    - **Private label** ``m`` (only in left): ``(s₁, s₂) --m--> (s₁', s₂)``
+    - **Private label** ``m`` (only in right): ``(s₁, s₂) --m--> (s₁, s₂')``
+    - **Shared label** ``m``: ``(s₁, s₂) --m--> (s₁', s₂')`` only when
+      both s₁ and s₂ enable ``m``
+
+    This is the CSP-style parallel composition (synchronize on shared alphabet).
+    """
+    from reticulate.statespace import StateSpace as SS
+
+    shared = _shared_labels(left, right)
+
+    # Pre-compute adjacency lists
+    left_adj: dict[int, list[tuple[str, int]]] = {s: [] for s in left.states}
+    for src, lbl, tgt in left.transitions:
+        left_adj[src].append((lbl, tgt))
+
+    right_adj: dict[int, list[tuple[str, int]]] = {s: [] for s in right.states}
+    for src, lbl, tgt in right.transitions:
+        right_adj[src].append((lbl, tgt))
+
+    # Build reachable states via BFS from (top, top)
+    pair_to_id: dict[tuple[int, int], int] = {}
+    id_labels: dict[int, str] = {}
+    transitions: list[tuple[int, str, int]] = []
+    selection_transitions: set[tuple[int, str, int]] = set()
+    next_id = 0
+
+    def get_id(s1: int, s2: int) -> int:
+        nonlocal next_id
+        pair = (s1, s2)
+        if pair not in pair_to_id:
+            sid = next_id
+            next_id += 1
+            pair_to_id[pair] = sid
+            l1 = left.labels.get(s1, str(s1))
+            l2 = right.labels.get(s2, str(s2))
+            id_labels[sid] = f"({l1}, {l2})"
+        return pair_to_id[pair]
+
+    # BFS from (top, top) — only explore reachable states
+    start = (left.top, right.top)
+    get_id(start[0], start[1])
+    queue = [start]
+    visited: set[tuple[int, int]] = set()
+
+    while queue:
+        s1, s2 = queue.pop(0)
+        if (s1, s2) in visited:
+            continue
+        visited.add((s1, s2))
+        src = pair_to_id[(s1, s2)]
+
+        # Private left transitions (label not shared)
+        for lbl, s1_tgt in left_adj[s1]:
+            if lbl not in shared:
+                tgt = get_id(s1_tgt, s2)
+                tr = (src, lbl, tgt)
+                transitions.append(tr)
+                if left.is_selection(s1, lbl, s1_tgt):
+                    selection_transitions.add(tr)
+                if (s1_tgt, s2) not in visited:
+                    queue.append((s1_tgt, s2))
+
+        # Private right transitions (label not shared)
+        for lbl, s2_tgt in right_adj[s2]:
+            if lbl not in shared:
+                tgt = get_id(s1, s2_tgt)
+                tr = (src, lbl, tgt)
+                transitions.append(tr)
+                if right.is_selection(s2, lbl, s2_tgt):
+                    selection_transitions.add(tr)
+                if (s1, s2_tgt) not in visited:
+                    queue.append((s1, s2_tgt))
+
+        # Synchronized transitions (shared labels — both must enable)
+        for lbl_l, s1_tgt in left_adj[s1]:
+            if lbl_l in shared:
+                for lbl_r, s2_tgt in right_adj[s2]:
+                    if lbl_r == lbl_l:
+                        tgt = get_id(s1_tgt, s2_tgt)
+                        tr = (src, lbl_l, tgt)
+                        transitions.append(tr)
+                        # Selection if either side is selecting
+                        if (left.is_selection(s1, lbl_l, s1_tgt)
+                                or right.is_selection(s2, lbl_l, s2_tgt)):
+                            selection_transitions.add(tr)
+                        if (s1_tgt, s2_tgt) not in visited:
+                            queue.append((s1_tgt, s2_tgt))
+
+    top = pair_to_id[(left.top, right.top)]
+    bottom_pair = (left.bottom, right.bottom)
+    # Bottom might not be reachable in synchronized product
+    if bottom_pair in pair_to_id:
+        bottom = pair_to_id[bottom_pair]
+    else:
+        # If (bottom, bottom) is unreachable, find the minimal reachable state
+        # This indicates a synchronization deadlock
+        bottom = get_id(bottom_pair[0], bottom_pair[1])
+
+    return SS(
+        states=set(pair_to_id.values()),
+        transitions=transitions,
+        top=top,
+        bottom=bottom,
+        labels=id_labels,
+        selection_transitions=selection_transitions,
+    )
+
+
+def _synchronized_product_nary(
+    state_spaces: list["StateSpace"],
+) -> "StateSpace":
+    """N-ary synchronized product via left-fold."""
+    if not state_spaces:
+        raise ValueError("need at least one state space")
+    return reduce(synchronized_product, state_spaces)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _shared_labels(left: "StateSpace", right: "StateSpace") -> set[str]:
+    """Find transition labels that appear in both state spaces."""
+    left_labels = {lbl for _, lbl, _ in left.transitions}
+    right_labels = {lbl for _, lbl, _ in right.transitions}
+    return left_labels & right_labels
+
+
 
 def _extract_interface(s: SessionType) -> dict[str, set[str]]:
     """Extract offered (Branch) and selected (Select) method labels from a type.

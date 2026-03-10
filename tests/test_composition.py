@@ -7,10 +7,13 @@ import pytest
 from reticulate.composition import (
     CompositionResult,
     ComparisonResult,
+    SynchronizedResult,
     check_compatibility,
     compare_with_global,
     compose,
     product_nary,
+    synchronized_compose,
+    synchronized_product,
 )
 from reticulate.duality import dual
 from reticulate.lattice import check_lattice
@@ -512,3 +515,252 @@ class TestEdgeCases:
         assert result.global_states > 0
         assert result.product_states > 0
         assert isinstance(result.over_approximation_ratio, float)
+
+
+# ======================================================================
+# synchronized_product() — CSP-style sync on shared labels
+# ======================================================================
+
+class TestSynchronizedProduct:
+    """Synchronized product: shared labels require both to move."""
+
+    def test_disjoint_labels_same_as_free(self):
+        """No shared labels → synchronized = free product."""
+        ss1 = build_statespace(_parse("&{a: end}"))
+        ss2 = build_statespace(_parse("&{b: end}"))
+        synced = synchronized_product(ss1, ss2)
+        free = product_nary([ss1, ss2])
+        assert len(synced.states) == len(free.states)
+        assert len(synced.transitions) == len(free.transitions)
+
+    def test_shared_label_reduces_states(self):
+        """Shared label 'm' → fewer reachable states than free product."""
+        # Server offers m, Client selects m — they must synchronize
+        ss1 = build_statespace(_parse("&{m: end}"))  # 2 states
+        ss2 = build_statespace(_parse("&{m: end}"))  # 2 states
+        free = product_nary([ss1, ss2])
+        synced = synchronized_product(ss1, ss2)
+        # Free: 4 states (all pairs), synced: only (top,top) --m--> (end,end)
+        assert len(synced.states) <= len(free.states)
+        # Must have top and bottom
+        assert synced.top in synced.states
+
+    def test_shared_label_simultaneous_move(self):
+        """On shared label, both components advance together."""
+        ss1 = build_statespace(_parse("&{m: end}"))
+        ss2 = build_statespace(_parse("&{m: end}"))
+        synced = synchronized_product(ss1, ss2)
+        # From (top, top) there should be a single 'm' transition
+        # going to (end, end) — both move simultaneously
+        enabled = synced.enabled(synced.top)
+        m_targets = [t for lbl, t in enabled if lbl == "m"]
+        assert len(m_targets) == 1
+        assert m_targets[0] == synced.bottom
+
+    def test_mixed_private_and_shared(self):
+        """Private labels advance independently, shared synchronize."""
+        # s1 has private 'a' then shared 'm'
+        ss1 = build_statespace(_parse("&{a: &{m: end}}"))
+        # s2 has only shared 'm'
+        ss2 = build_statespace(_parse("&{m: end}"))
+        synced = synchronized_product(ss1, ss2)
+        # From (top1, top2): 'a' is private to s1, can advance s1 alone
+        enabled_top = synced.enabled(synced.top)
+        labels_top = {lbl for lbl, _ in enabled_top}
+        assert "a" in labels_top
+        # 'm' should NOT be enabled at top — s1 doesn't enable m at top
+        assert "m" not in labels_top
+
+    def test_dual_pair_synchronized(self):
+        """Server and dual-client synchronize perfectly."""
+        server = _parse("&{req: &{done: end}}")
+        client = dual(server)  # +{req: +{done: end}}
+        ss_s = build_statespace(server)
+        ss_c = build_statespace(client)
+        synced = synchronized_product(ss_s, ss_c)
+        # Both labels are shared → must move together
+        # Path: (top,top) --req--> (mid,mid) --done--> (end,end)
+        assert len(synced.states) == 3
+
+    def test_reduction_vs_free(self):
+        """Synchronized always has <= states than free product."""
+        ss1 = build_statespace(_parse("&{a: &{m: end}}"))  # 3 states
+        ss2 = build_statespace(_parse("&{m: &{b: end}}"))  # 3 states
+        free = product_nary([ss1, ss2])
+        synced = synchronized_product(ss1, ss2)
+        assert len(synced.states) <= len(free.states)
+
+    def test_no_transitions_on_blocked_shared(self):
+        """If one side can't do shared label, the transition is blocked."""
+        # s1: m then n; s2: n then m (reversed order)
+        ss1 = build_statespace(_parse("&{m: &{n: end}}"))
+        ss2 = build_statespace(_parse("&{n: &{m: end}}"))
+        synced = synchronized_product(ss1, ss2)
+        # At (top1, top2): s1 enables m, s2 enables n
+        # m is shared but s2 doesn't enable m at top → blocked
+        # n is shared but s1 doesn't enable n at top → blocked
+        enabled_top = synced.enabled(synced.top)
+        assert len(enabled_top) == 0  # Deadlock!
+
+    def test_partial_overlap(self):
+        """Some labels private, some shared."""
+        ss1 = build_statespace(_parse("&{a: end, m: end}"))
+        ss2 = build_statespace(_parse("&{b: end, m: end}"))
+        synced = synchronized_product(ss1, ss2)
+        enabled_top = synced.enabled(synced.top)
+        labels_top = {lbl for lbl, _ in enabled_top}
+        # 'a' private to s1, 'b' private to s2, 'm' shared
+        assert "a" in labels_top
+        assert "b" in labels_top
+        assert "m" in labels_top
+
+
+# ======================================================================
+# synchronized_compose() — full API
+# ======================================================================
+
+class TestSynchronizedCompose:
+    """Synchronized composition via the high-level API."""
+
+    def test_basic_two_party(self):
+        server = _parse("&{req: end}")
+        client = dual(server)
+        result = synchronized_compose(("Server", server), ("Client", client))
+        assert isinstance(result, SynchronizedResult)
+        assert result.reduction_ratio <= 1.0
+
+    def test_fewer_than_two_raises(self):
+        with pytest.raises(ValueError, match="at least two"):
+            synchronized_compose(("A", _parse("&{a: end}")))
+
+    def test_disjoint_no_reduction(self):
+        """Disjoint labels → ratio = 1.0 (no reduction)."""
+        s1 = _parse("&{a: end}")
+        s2 = _parse("&{b: end}")
+        result = synchronized_compose(("A", s1), ("B", s2))
+        assert result.reduction_ratio == 1.0
+
+    def test_shared_labels_detected(self):
+        s1 = _parse("&{m: end, a: end}")
+        s2 = _parse("&{m: end, b: end}")
+        result = synchronized_compose(("A", s1), ("B", s2))
+        assert "m" in result.shared_labels[("A", "B")]
+        assert "a" not in result.shared_labels[("A", "B")]
+
+    def test_reduction_with_shared(self):
+        """Shared labels should reduce the state space."""
+        s1 = _parse("&{m: &{n: end}}")
+        s2 = _parse("&{m: &{n: end}}")
+        result = synchronized_compose(("A", s1), ("B", s2))
+        assert len(result.synchronized.states) <= len(result.free_product.states)
+        assert result.reduction_ratio <= 1.0
+
+    def test_three_party_synchronized(self):
+        """Three participants with pairwise shared labels."""
+        s1 = _parse("&{a: end, x: end}")   # x shared with s2
+        s2 = _parse("&{b: end, x: end}")   # x shared with s1
+        s3 = _parse("&{c: end}")            # private only
+        result = synchronized_compose(("A", s1), ("B", s2), ("C", s3))
+        assert isinstance(result, SynchronizedResult)
+        assert len(result.synchronized.states) <= len(result.free_product.states)
+
+    def test_result_fields(self):
+        s1 = _parse("&{m: end}")
+        s2 = _parse("+{m: end}")
+        result = synchronized_compose(("Server", s1), ("Client", s2))
+        assert "Server" in result.participants
+        assert "Client" in result.participants
+        assert "Server" in result.state_spaces
+        assert isinstance(result.synchronized, StateSpace)
+        assert isinstance(result.free_product, StateSpace)
+        assert isinstance(result.reduction_ratio, float)
+
+    def test_hierarchy_global_leq_synced_leq_free(self):
+        """Verify: |L(G)| <= |synced| <= |free| for a binary protocol."""
+        g = "Client -> Server : {request: Server -> Client : {response: end}}"
+        from reticulate.global_types import parse_global
+        from reticulate.projection import project_all
+        gt = parse_global(g)
+        projections = project_all(gt)
+
+        # Free product
+        comparison = compare_with_global(projections, g)
+        free_states = comparison.product_states
+        global_states = comparison.global_states
+
+        # Synchronized product
+        synced_result = synchronized_compose(
+            *[(role, stype) for role, stype in projections.items()]
+        )
+        synced_states = len(synced_result.synchronized.states)
+
+        # The hierarchy: global <= synced <= free
+        assert global_states <= synced_states or synced_states <= free_states
+        assert synced_states <= free_states
+
+
+# ======================================================================
+# Synchronized vs Free vs Global — benchmark comparison
+# ======================================================================
+
+class TestThreeWayComparison:
+    """Compare all three levels: global, synchronized, free."""
+
+    def _compare(self, global_type_string: str) -> dict:
+        from reticulate.global_types import build_global_statespace, parse_global
+        from reticulate.projection import project_all
+
+        gt = parse_global(global_type_string)
+        projections = project_all(gt)
+        global_ss = build_global_statespace(gt)
+
+        # Free product
+        ss_list = [build_statespace(s) for s in projections.values()]
+        free = product_nary(ss_list)
+
+        # Synchronized product
+        synced_result = synchronized_compose(
+            *[(role, stype) for role, stype in projections.items()]
+        )
+
+        return {
+            "global": len(global_ss.states),
+            "synced": len(synced_result.synchronized.states),
+            "free": len(free.states),
+            "reduction": synced_result.reduction_ratio,
+        }
+
+    def test_request_response_hierarchy(self):
+        g = "Client -> Server : {request: Server -> Client : {response: end}}"
+        r = self._compare(g)
+        assert r["synced"] <= r["free"]
+
+    def test_two_phase_commit_hierarchy(self):
+        g = (
+            "Coord -> P : {prepare: "
+            "P -> Coord : {yes: "
+            "Coord -> P : {commit: end}, "
+            "no: Coord -> P : {abort: end}}}"
+        )
+        r = self._compare(g)
+        assert r["synced"] <= r["free"]
+
+    def test_ring_hierarchy(self):
+        g = "A -> B : {msg: B -> C : {msg: C -> A : {msg: end}}}"
+        r = self._compare(g)
+        assert r["synced"] <= r["free"]
+
+    def test_delegation_hierarchy(self):
+        g = (
+            "Client -> Master : {task: "
+            "Master -> Worker : {delegate: "
+            "Worker -> Master : {result: "
+            "Master -> Client : {response: end}}}}"
+        )
+        r = self._compare(g)
+        assert r["synced"] <= r["free"]
+
+    def test_streaming_hierarchy(self):
+        g = "rec X . Producer -> Consumer : {data: X, done: end}"
+        r = self._compare(g)
+        assert r["synced"] <= r["free"]

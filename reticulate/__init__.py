@@ -137,10 +137,13 @@ from reticulate.recursion import (
 from reticulate.composition import (
     ComparisonResult,
     CompositionResult,
+    SynchronizedResult,
     check_compatibility,
     compare_with_global,
     compose,
     product_nary,
+    synchronized_compose,
+    synchronized_product,
 )
 from reticulate.context_free import (
     ChomskyClassification,
@@ -275,10 +278,13 @@ __all__ = [
     "stack_depth_bound",
     "ComparisonResult",
     "CompositionResult",
+    "SynchronizedResult",
     "check_compatibility",
     "compare_with_global",
     "compose",
     "product_nary",
+    "synchronized_compose",
+    "synchronized_product",
     "role_dot_source",
     "role_hasse_diagram",
     "role_render_hasse",
