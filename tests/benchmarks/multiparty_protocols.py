@@ -336,4 +336,77 @@ MULTIPARTY_BENCHMARKS: list[MultipartyBenchmark] = [
         ),
         expected_roles=frozenset({"Master", "Worker"}),
     ),
+    # ── Biological Multiparty Protocols (21–24) ──────────────
+    # 21. Central Dogma
+    MultipartyBenchmark(
+        name="Central Dogma",
+        global_type_string=(
+            "Nucleus -> Ribosome : {transcribe: "
+            "Ribosome -> ER : {translate: "
+            "ER -> Ribosome : {fold: "
+            "Ribosome -> Nucleus : {signal: end}}}}"
+        ),
+        description=(
+            "Central dogma of molecular biology as multiparty choreography: "
+            "Nucleus transcribes mRNA to Ribosome, Ribosome translates and "
+            "sends protein to ER for folding, ER signals quality back to "
+            "Ribosome, which reports to Nucleus."
+        ),
+        expected_roles=frozenset({"Nucleus", "Ribosome", "ER"}),
+    ),
+    # 22. Intracellular Signaling
+    MultipartyBenchmark(
+        name="Intracellular Signaling",
+        global_type_string=(
+            "Receptor -> GProtein : {activate: "
+            "GProtein -> Kinase : {phosphorylate: "
+            "Kinase -> Nucleus : {transcribe: "
+            "Nucleus -> Kinase : {feedback: end}}}}"
+        ),
+        description=(
+            "Intracellular signal transduction as multiparty choreography: "
+            "membrane Receptor activates G-protein, which triggers Kinase "
+            "cascade, Kinase signals Nucleus for transcription, Nucleus "
+            "provides feedback to Kinase (negative regulation)."
+        ),
+        expected_roles=frozenset({"Receptor", "GProtein", "Kinase", "Nucleus"}),
+    ),
+    # 23. Immune Synapse
+    MultipartyBenchmark(
+        name="Immune Synapse",
+        global_type_string=(
+            "APC -> TCR : {present_antigen: "
+            "TCR -> APC : {recognize: "
+            "TCR -> Cytokine : {release: "
+            "Cytokine -> TargetCell : {eliminate: end}}}}"
+        ),
+        description=(
+            "Immune synapse as multiparty protocol: antigen-presenting cell "
+            "(APC) presents antigen to T-cell receptor (TCR), TCR recognizes "
+            "and signals back, then TCR triggers cytokine release, and "
+            "cytokines eliminate the target cell."
+        ),
+        expected_roles=frozenset({"APC", "TCR", "Cytokine", "TargetCell"}),
+    ),
+    # 24. Quorum Sensing
+    MultipartyBenchmark(
+        name="Quorum Sensing",
+        global_type_string=(
+            "Bacterium1 -> Environment : {signal: "
+            "Bacterium2 -> Environment : {signal: "
+            "Environment -> Bacterium3 : {threshold: "
+            "Bacterium3 -> Bacterium1 : {activate: "
+            "Bacterium3 -> Bacterium2 : {activate: end}}}}}"
+        ),
+        description=(
+            "Bacterial quorum sensing: Bacterium1 and Bacterium2 emit "
+            "signaling molecules into Environment, Environment detects "
+            "threshold concentration, then Bacterium3 broadcasts activation "
+            "to all bacteria — triggering collective behavior (biofilm "
+            "formation, virulence gene expression)."
+        ),
+        expected_roles=frozenset(
+            {"Bacterium1", "Bacterium2", "Bacterium3", "Environment"}
+        ),
+    ),
 ]

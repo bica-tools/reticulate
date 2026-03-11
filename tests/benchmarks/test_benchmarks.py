@@ -96,8 +96,8 @@ def test_top_reaches_bottom(protocol: BenchmarkProtocol) -> None:
 class TestBenchmarkSuite:
     """Tests about the benchmark suite itself."""
 
-    def test_all_40_present(self) -> None:
-        assert len(BENCHMARKS) == 40
+    def test_all_56_present(self) -> None:
+        assert len(BENCHMARKS) == 56
 
     def test_unique_names(self) -> None:
         names = [p.name for p in BENCHMARKS]
@@ -126,4 +126,4 @@ class TestBenchmarkSuite:
 
     def test_parallel_count(self) -> None:
         parallel_count = sum(1 for p in BENCHMARKS if p.uses_parallel)
-        assert parallel_count >= 10
+        assert parallel_count >= 16

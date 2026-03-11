@@ -738,4 +738,305 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=41,
         uses_parallel=True,
     ),
+    # ── Molecular Biology Benchmarks (41–48) ──────────────────
+    # 41. Ribosome Translation
+    BenchmarkProtocol(
+        name="Ribosome Translation",
+        type_string=(
+            "rec X . &{sense_codon: &{match_tRNA: &{peptide_bond: X}}, "
+            "stop_codon: &{release: end}}"
+        ),
+        description=(
+            "Ribosome translation protocol: initiation, then elongation loop "
+            "(sense codon, match tRNA, form peptide bond) until a stop codon "
+            "triggers release factor binding and termination."
+        ),
+        expected_states=5,
+        expected_transitions=5,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # 42. Polysome (Concurrent Translation)
+    BenchmarkProtocol(
+        name="Polysome",
+        type_string=(
+            "&{initiate: (rec X . &{sense_codon: &{match_tRNA: "
+            "&{peptide_bond: X}}, stop_codon: &{release: wait}} || "
+            "rec Y . &{sense_codon: &{match_tRNA: &{peptide_bond: Y}}, "
+            "stop_codon: &{release: wait}}) . end}"
+        ),
+        description=(
+            "Polysome: two ribosomes translating the same mRNA concurrently. "
+            "Each ribosome independently performs elongation cycles. Models "
+            "concurrent access to a shared protocol (the mRNA template)."
+        ),
+        expected_states=26,
+        expected_transitions=51,
+        expected_sccs=10,
+        uses_parallel=True,
+    ),
+    # 43. Alternative Splicing
+    BenchmarkProtocol(
+        name="Alternative Splicing",
+        type_string=(
+            "&{transcribe: &{splice: +{ISOFORM_A: &{translate: end}, "
+            "ISOFORM_B: &{translate: end}, ISOFORM_C: &{translate: end}}}}"
+        ),
+        description=(
+            "Alternative splicing: transcription produces pre-mRNA, then the "
+            "spliceosome selects among three exon combinations (isoforms). "
+            "Models external choice by the splicing machinery."
+        ),
+        expected_states=7,
+        expected_transitions=8,
+        expected_sccs=7,
+        uses_parallel=False,
+    ),
+    # 44. Lac Operon Regulation
+    BenchmarkProtocol(
+        name="Lac Operon",
+        type_string=(
+            "rec X . &{sense_lactose: +{PRESENT: &{transcribe: "
+            "&{translate: X}}, ABSENT: &{repress: X}}, cell_death: end}"
+        ),
+        description=(
+            "Lac operon gene regulation: sense lactose presence, then either "
+            "transcribe and translate (lactose present) or repress (absent). "
+            "Recursive: the operon continuously monitors its environment. "
+            "Cell death provides the termination exit."
+        ),
+        expected_states=6,
+        expected_transitions=7,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 45. DNA Replication Fork
+    BenchmarkProtocol(
+        name="DNA Replication Fork",
+        type_string=(
+            "&{unwind: (rec X . &{synthesize_leading: X, "
+            "complete_leading: wait} || rec Y . &{synthesize_okazaki: "
+            "&{ligate: Y}, complete_lagging: wait}) . end}"
+        ),
+        description=(
+            "DNA replication fork: helicase unwinds, then leading strand "
+            "synthesis (continuous) runs in parallel with lagging strand "
+            "synthesis (Okazaki fragments with ligation). Models the "
+            "asymmetric concurrent replication mechanism."
+        ),
+        expected_states=7,
+        expected_transitions=13,
+        expected_sccs=5,
+        uses_parallel=True,
+    ),
+    # 46. tRNA Charging (Aminoacyl-tRNA Synthetase)
+    BenchmarkProtocol(
+        name="tRNA Charging",
+        type_string=(
+            "rec X . &{bind_amino_acid: &{bind_tRNA: &{transfer: "
+            "&{release: X}}}, shutdown: end}"
+        ),
+        description=(
+            "Aminoacyl-tRNA synthetase charging cycle: bind amino acid, "
+            "bind tRNA, transfer aminoacyl group, release charged tRNA, "
+            "then loop. Essential for translation fidelity."
+        ),
+        expected_states=5,
+        expected_transitions=5,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 47. mRNA Lifecycle
+    BenchmarkProtocol(
+        name="mRNA Lifecycle",
+        type_string=(
+            "&{transcribe: &{cap: &{splice: &{export: &{translate: "
+            "&{decay: end}}}}}}"
+        ),
+        description=(
+            "Complete mRNA lifecycle: transcription, 5' capping, splicing, "
+            "nuclear export, translation, and finally mRNA decay. A linear "
+            "protocol with no branching — each step must complete before "
+            "the next begins."
+        ),
+        expected_states=7,
+        expected_transitions=6,
+        expected_sccs=7,
+        uses_parallel=False,
+    ),
+    # 48. Protein Folding (Chaperone-Assisted)
+    BenchmarkProtocol(
+        name="Protein Folding",
+        type_string=(
+            "rec X . &{fold_attempt: +{NATIVE: end, MISFOLDED: "
+            "&{chaperone_bind: &{unfold: X}}, AGGREGATE: &{degrade: end}}}"
+        ),
+        description=(
+            "Chaperone-assisted protein folding: attempt folding, then "
+            "either reach native state (end), misfold (chaperone rescues "
+            "and retries), or aggregate irreversibly (targeted for "
+            "degradation). Models the cellular quality control system."
+        ),
+        expected_states=6,
+        expected_transitions=7,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # ── Cell Biology Benchmarks (49–56) ───────────────────────
+    # 49. Cell Cycle (Eukaryotic)
+    BenchmarkProtocol(
+        name="Cell Cycle",
+        type_string=(
+            "rec X . &{G1_checkpoint: +{PASS: &{S_phase: &{G2_checkpoint: "
+            "+{PASS: &{mitosis: X}, FAIL: &{repair: X}}}}, FAIL: "
+            "&{repair: X}}, differentiate: end, apoptosis: end}"
+        ),
+        description=(
+            "Eukaryotic cell cycle with checkpoints: G1 checkpoint "
+            "(pass → S phase → G2 checkpoint → mitosis, or fail → repair), "
+            "with exits to differentiation or apoptosis. Guarded recursion "
+            "ensures checkpoints precede division."
+        ),
+        expected_states=9,
+        expected_transitions=12,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 50. Signal Transduction (PKA Pathway)
+    BenchmarkProtocol(
+        name="Signal Transduction PKA",
+        type_string=(
+            "&{hormone_bind: &{activate_G_protein: &{produce_cAMP: "
+            "&{activate_PKA: (&{phosphorylate: wait} || "
+            "&{open_ion_channel: wait}) . end}}}}"
+        ),
+        description=(
+            "PKA signal transduction cascade: hormone binds receptor, "
+            "activates G-protein, produces cAMP, activates PKA, then "
+            "PKA concurrently phosphorylates targets and opens ion "
+            "channels. The parallel fork models PKA's multiple "
+            "simultaneous downstream effects."
+        ),
+        expected_states=8,
+        expected_transitions=8,
+        expected_sccs=8,
+        uses_parallel=True,
+    ),
+    # 51. ER-Golgi Secretory Pathway
+    BenchmarkProtocol(
+        name="ER-Golgi Secretory",
+        type_string=(
+            "&{synthesize: &{fold: +{NATIVE: &{ER_exit: &{golgi_sort: "
+            "+{MEMBRANE: end, SECRETED: end, LYSOSOME: end}}}, MISFOLDED: "
+            "&{ER_retain: &{degrade: end}}}}}"
+        ),
+        description=(
+            "ER-Golgi secretory pathway: synthesize protein in ER, fold, "
+            "then quality control branch — native proteins exit ER and are "
+            "sorted by Golgi to membrane, secretion, or lysosome; misfolded "
+            "proteins are retained and degraded (ERAD)."
+        ),
+        expected_states=9,
+        expected_transitions=11,
+        expected_sccs=9,
+        uses_parallel=False,
+    ),
+    # 52. Homeostatic Glucose Regulation
+    BenchmarkProtocol(
+        name="Glucose Regulation",
+        type_string=(
+            "rec X . &{measure_glucose: +{LOW: &{release_glucagon: X}, "
+            "NORMAL: X, HIGH: &{release_insulin: X}}, apoptosis: end}"
+        ),
+        description=(
+            "Homeostatic glucose regulation: continuously measure blood "
+            "glucose, respond with glucagon (low), nothing (normal), or "
+            "insulin (high), then loop. Apoptosis provides the termination "
+            "exit. Models pancreatic islet cell behavior."
+        ),
+        expected_states=5,
+        expected_transitions=7,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 53. Action Potential (Full)
+    BenchmarkProtocol(
+        name="Action Potential Full",
+        type_string=(
+            "rec X . &{stimulus: +{THRESHOLD: (&{Na_activate: "
+            "+{INACTIVATE: wait, CLOSE: wait}} || &{K_activate: "
+            "&{K_delayed_close: wait}}) . &{repolarize: &{refractory: X}}, "
+            "SUBTHRESHOLD: X}, shutdown: end}"
+        ),
+        description=(
+            "Full action potential with parallel Na+/K+ channels: stimulus "
+            "above threshold triggers concurrent Na+ activation "
+            "(fast inactivation or direct close) and K+ delayed "
+            "rectification, followed by repolarization and refractory "
+            "period. Extends benchmark 34 with the full cycle."
+        ),
+        expected_states=13,
+        expected_transitions=21,
+        expected_sccs=2,
+        uses_parallel=True,
+    ),
+    # 54. Apoptosis (Programmed Cell Death)
+    BenchmarkProtocol(
+        name="Apoptosis",
+        type_string=(
+            "&{receive_signal: +{INTRINSIC: &{mitochondrial_release: "
+            "&{activate_caspase9: &{activate_caspase3: "
+            "&{DNA_fragmentation: end}}}}, EXTRINSIC: "
+            "&{activate_caspase8: &{activate_caspase3: "
+            "&{DNA_fragmentation: end}}}}}"
+        ),
+        description=(
+            "Programmed cell death (apoptosis): two initiation pathways — "
+            "intrinsic (mitochondrial cytochrome c release → caspase-9) "
+            "and extrinsic (death receptor → caspase-8) — both converge "
+            "on caspase-3 activation and DNA fragmentation."
+        ),
+        expected_states=10,
+        expected_transitions=10,
+        expected_sccs=10,
+        uses_parallel=False,
+    ),
+    # 55. Immune Response (T-Cell Activation)
+    BenchmarkProtocol(
+        name="T-Cell Activation",
+        type_string=(
+            "&{antigen_present: &{activate: (&{release_cytokine: wait} || "
+            "&{proliferate: wait}) . +{MEMORY: end, APOPTOSIS: end}}}"
+        ),
+        description=(
+            "T-cell immune response: antigen-presenting cell activates "
+            "T-cell, then T-cell concurrently releases cytokines and "
+            "proliferates. After the parallel phase, the T-cell either "
+            "becomes a memory cell or undergoes apoptosis."
+        ),
+        expected_states=7,
+        expected_transitions=8,
+        expected_sccs=7,
+        uses_parallel=True,
+    ),
+    # 56. Photosynthesis-Respiration Coupling
+    BenchmarkProtocol(
+        name="Photosynthesis-Respiration",
+        type_string=(
+            "(&{light_reactions: &{produce_ATP: wait}} || "
+            "&{calvin_cycle: &{fix_carbon: wait}}) . "
+            "(&{glycolysis: &{pyruvate: wait}} || "
+            "&{krebs_cycle: &{electron_transport: wait}}) . end"
+        ),
+        description=(
+            "Plant cell energy metabolism: photosynthesis (light reactions "
+            "∥ Calvin cycle) followed by respiration (glycolysis ∥ Krebs "
+            "cycle). Two sequential parallel phases model the concurrent "
+            "sub-pathways within each metabolic process."
+        ),
+        expected_states=17,
+        expected_transitions=24,
+        expected_sccs=17,
+        uses_parallel=True,
+    ),
 ]
