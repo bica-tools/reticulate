@@ -1,6 +1,6 @@
 """Benchmark protocol definitions for the reticulate test suite.
 
-34 real-world and classic protocols expressed as session types using the
+69 real-world and classic protocols expressed as session types using the
 core grammar: branch (&), selection (+), parallel (||), recursion (rec),
 continuation (.), wait, and end.  No sequencing sugar.
 """
@@ -1038,5 +1038,258 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_transitions=24,
         expected_sccs=17,
         uses_parallel=True,
+    ),
+    # ── Physics Benchmarks (57–69) — Step 157i ────────────────
+    # 57. QED Vertex (Quantum Electrodynamics)
+    BenchmarkProtocol(
+        name="QED Vertex",
+        type_string=(
+            "&{emit_photon: &{absorb: end}, absorb_photon: &{emit: end}}"
+        ),
+        description=(
+            "QED vertex interaction: an electron can emit or absorb a "
+            "virtual photon. The two branches model the two orientations "
+            "of the fundamental QED vertex in a Feynman diagram. "
+            "Crossing symmetry corresponds to session type duality."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 58. QCD Gluon Exchange (Strong Force)
+    BenchmarkProtocol(
+        name="QCD Gluon Exchange",
+        type_string=(
+            "&{emit_gluon: +{RR: &{absorb_gluon: end}, "
+            "RG: &{absorb_gluon: end}, RB: &{absorb_gluon: end}}}"
+        ),
+        description=(
+            "QCD gluon exchange between quarks: emit a gluon carrying "
+            "a colour charge (red-red, red-green, red-blue), then the "
+            "target quark absorbs. The selection models the colour "
+            "charge assignment from the SU(3) gauge group."
+        ),
+        expected_states=6,
+        expected_transitions=7,
+        expected_sccs=6,
+        uses_parallel=False,
+    ),
+    # 59. Weak Decay (Beta Decay)
+    BenchmarkProtocol(
+        name="Weak Decay (Beta)",
+        type_string=(
+            "&{W_boson_emit: +{BETA_MINUS: &{electron: "
+            "&{antineutrino: end}}, BETA_PLUS: &{positron: "
+            "&{neutrino: end}}}}"
+        ),
+        description=(
+            "Weak-force beta decay: a quark emits a W boson, then "
+            "either beta-minus (W⁻ → electron + antineutrino) or "
+            "beta-plus (W⁺ → positron + neutrino). Models the "
+            "electroweak vertex with lepton-number conservation."
+        ),
+        expected_states=7,
+        expected_transitions=7,
+        expected_sccs=7,
+        uses_parallel=False,
+    ),
+    # 60. Double Slit (Unobserved — Interference)
+    BenchmarkProtocol(
+        name="Double Slit Unobserved",
+        type_string=(
+            "&{emit: (&{propagate_A: wait} || &{propagate_B: wait}) "
+            ". &{interfere: end}}"
+        ),
+        description=(
+            "Double-slit experiment without observation: particle is "
+            "emitted, propagates through both slits in parallel "
+            "(superposition as ∥), then the paths recombine to "
+            "produce an interference pattern. The parallel constructor "
+            "models quantum superposition."
+        ),
+        expected_states=6,
+        expected_transitions=6,
+        expected_sccs=6,
+        uses_parallel=True,
+    ),
+    # 61. Double Slit (Observed — Collapse)
+    BenchmarkProtocol(
+        name="Double Slit Observed",
+        type_string=(
+            "&{emit: +{SLIT_A: &{detect_A: end}, "
+            "SLIT_B: &{detect_B: end}}}"
+        ),
+        description=(
+            "Double-slit experiment with observation: measurement "
+            "collapses superposition (∥) to selection (⊕). The "
+            "particle chooses one slit. No interference pattern. "
+            "Demonstrates measurement as the ∥→⊕ collapse."
+        ),
+        expected_states=5,
+        expected_transitions=5,
+        expected_sccs=5,
+        uses_parallel=False,
+    ),
+    # 62. Bell Pair (EPR Entanglement)
+    BenchmarkProtocol(
+        name="Bell Pair",
+        type_string=(
+            "(&{measure_A: +{UP_A: wait, DOWN_A: wait}} || "
+            "&{measure_B: +{UP_B: wait, DOWN_B: wait}}) . end"
+        ),
+        description=(
+            "Bell pair measurement: two entangled particles are "
+            "measured concurrently. Each measurement selects spin up "
+            "or down. The product lattice L(A)×L(B) has 4 outcome "
+            "states, but Bell correlations constrain the reachable "
+            "subset. Models EPR as parallel session composition."
+        ),
+        expected_states=9,
+        expected_transitions=18,
+        expected_sccs=9,
+        uses_parallel=True,
+    ),
+    # 63. Quantum Teleportation
+    BenchmarkProtocol(
+        name="Quantum Teleportation",
+        type_string=(
+            "&{prepare_bell: (&{alice_measure: +{PHI_PLUS: wait, "
+            "PHI_MINUS: wait, PSI_PLUS: wait, PSI_MINUS: wait}} || "
+            "&{bob_receive: &{classical_bits: +{CORRECT_00: wait, "
+            "CORRECT_01: wait, CORRECT_10: wait, CORRECT_11: wait}}}) "
+            ". &{reconstruct: end}}"
+        ),
+        description=(
+            "Quantum teleportation protocol: prepare a Bell pair, then "
+            "Alice measures (4 Bell states) in parallel with Bob "
+            "receiving classical correction bits (4 options). After "
+            "synchronisation, Bob reconstructs the teleported state. "
+            "Models the full Bennett et al. (1993) protocol."
+        ),
+        expected_states=14,
+        expected_transitions=40,
+        expected_sccs=14,
+        uses_parallel=True,
+    ),
+    # 64. Hydrogen Atom (Energy Levels)
+    BenchmarkProtocol(
+        name="Hydrogen Atom",
+        type_string=(
+            "rec X . &{absorb_photon: +{EXCITE: X, IONIZE: end}, "
+            "emit_photon: X, ground_state: end}"
+        ),
+        description=(
+            "Hydrogen atom energy transitions: repeatedly absorb "
+            "photons (excite to higher level or ionize) or emit "
+            "photons (relax). The recursion models discrete energy "
+            "levels; ionization and ground-state decay are exits."
+        ),
+        expected_states=3,
+        expected_transitions=5,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 65. Cascade Decay (Nuclear/Atomic)
+    BenchmarkProtocol(
+        name="Cascade Decay",
+        type_string=(
+            "&{excited_3: +{EMIT_GAMMA1: &{excited_2: +{EMIT_GAMMA2: "
+            "&{excited_1: +{EMIT_GAMMA3: end}}}}, DIRECT: end}}"
+        ),
+        description=(
+            "Three-level cascade decay: an excited nucleus or atom "
+            "in state |3> can emit gamma-1 to reach |2>, then "
+            "gamma-2 to |1>, then gamma-3 to ground state, or "
+            "directly decay. Models sequential de-excitation with "
+            "branching at each level."
+        ),
+        expected_states=7,
+        expected_transitions=7,
+        expected_sccs=7,
+        uses_parallel=False,
+    ),
+    # 66. Stellar Nucleosynthesis
+    BenchmarkProtocol(
+        name="Stellar Nucleosynthesis",
+        type_string=(
+            "rec X . &{fuse: +{HELIUM: &{contract: &{heat: X}}, "
+            "CARBON: &{contract: &{heat: X}}, "
+            "OXYGEN: &{contract: &{heat: X}}, "
+            "IRON: &{collapse: +{SUPERNOVA: end, WHITE_DWARF: end}}}}"
+        ),
+        description=(
+            "Stellar nucleosynthesis: a star repeatedly fuses lighter "
+            "elements into heavier ones (H->He->C->O), each time "
+            "contracting and heating. When iron is reached, fusion "
+            "becomes endothermic: the star either goes supernova "
+            "or collapses to a white dwarf. Models the onion-shell "
+            "burning sequence."
+        ),
+        expected_states=11,
+        expected_transitions=14,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 67. Big Bang Nucleosynthesis (BBN)
+    BenchmarkProtocol(
+        name="Big Bang Nucleosynthesis",
+        type_string=(
+            "&{quark_gluon_plasma: &{hadronize: "
+            "(&{proton_neutron_ratio: &{freeze_out: wait}} || "
+            "&{deuterium_form: &{helium_fuse: wait}}) "
+            ". &{primordial_abundances: end}}}"
+        ),
+        description=(
+            "Big Bang nucleosynthesis (BBN): quark-gluon plasma "
+            "hadronizes, then two parallel channels — proton-neutron "
+            "ratio freeze-out and light element fusion (D->He) — "
+            "run concurrently. After synchronisation, primordial "
+            "abundances are fixed. Models the first 3 minutes."
+        ),
+        expected_states=12,
+        expected_transitions=15,
+        expected_sccs=12,
+        uses_parallel=True,
+    ),
+    # 68. Gravitational Collapse
+    BenchmarkProtocol(
+        name="Gravitational Collapse",
+        type_string=(
+            "&{accrete: rec X . &{compress: +{STABLE: &{radiate: X}, "
+            "CHANDRASEKHAR: +{WHITE_DWARF: end, NEUTRON_STAR: end, "
+            "BLACK_HOLE: end}}}}"
+        ),
+        description=(
+            "Gravitational collapse: matter accretes, then a "
+            "compression loop — if stable, radiate and continue; "
+            "if the Chandrasekhar limit is reached, collapse to "
+            "a white dwarf, neutron star, or black hole. Models "
+            "the Tolman-Oppenheimer-Volkoff stability criterion."
+        ),
+        expected_states=6,
+        expected_transitions=8,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 69. Black Hole (Hawking Radiation)
+    BenchmarkProtocol(
+        name="Black Hole Hawking",
+        type_string=(
+            "rec X . &{accrete_matter: X, hawking_emit: +{PHOTON: X, "
+            "PARTICLE: X, EVAPORATE: end}, merge: end}"
+        ),
+        description=(
+            "Black hole lifecycle with Hawking radiation: the black "
+            "hole can accrete matter (grow), emit Hawking radiation "
+            "(photon or particle, then loop), or eventually "
+            "evaporate completely. Merger with another black hole "
+            "is an alternative exit. Models the information paradox "
+            "as irreversible terminal states."
+        ),
+        expected_states=3,
+        expected_transitions=6,
+        expected_sccs=2,
+        uses_parallel=False,
     ),
 ]

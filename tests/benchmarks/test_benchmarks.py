@@ -96,8 +96,8 @@ def test_top_reaches_bottom(protocol: BenchmarkProtocol) -> None:
 class TestBenchmarkSuite:
     """Tests about the benchmark suite itself."""
 
-    def test_all_56_present(self) -> None:
-        assert len(BENCHMARKS) == 56
+    def test_all_69_present(self) -> None:
+        assert len(BENCHMARKS) == 69
 
     def test_unique_names(self) -> None:
         names = [p.name for p in BENCHMARKS]

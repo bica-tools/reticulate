@@ -48,11 +48,17 @@ class TestBenchmarkDistributivity:
         "ER-Golgi Secretory",     # no parallel, has N₅ — branch+select QC pathway
         "Apoptosis",              # no parallel, has N₅ — dual initiation convergence
         "Photosynthesis-Respiration",  # parallel, has N₅ — sequential ∥ phases
+        # Physics benchmarks (Step 157i):
+        "Weak Decay (Beta)",      # no parallel, has N₅ — branch+select decay pathways
+        "Bell Pair",              # parallel, has N₅ — entangled measurement outcomes
+        "Quantum Teleportation",  # parallel, has N₅ — parallel measurement+correction
+        "Big Bang Nucleosynthesis",  # parallel, has N₅ — parallel fusion channels
     }
 
     # Benchmarks that are modular (M₃) but not distributive, without N₅:
     MODULAR_NON_DISTRIBUTIVE = {
         "Alternative Splicing",   # modular non-distributive — 3-way isoform selection
+        "QCD Gluon Exchange",     # modular non-distributive — 3-way colour charge
     }
 
     @pytest.mark.parametrize(
@@ -176,17 +182,20 @@ class TestClassification:
 class TestModularity:
     """Test modular lattice detection."""
 
-    # 7 benchmarks are known to be non-modular (contain N₅)
+    # Benchmarks known to be non-modular (contain N₅)
     NON_MODULAR = {
         "Two-Buyer", "Reticulate Pipeline", "TLS Handshake",
         "Saga Orchestrator", "Two-Phase Commit", "Quantum Measurement",
         "Ki3 Onboarding", "Ki3 CI/CD Pipeline",
         "Polysome", "ER-Golgi Secretory", "Apoptosis",
         "Photosynthesis-Respiration",
+        # Physics benchmarks (Step 157i):
+        "Weak Decay (Beta)", "Bell Pair", "Quantum Teleportation",
+        "Big Bang Nucleosynthesis",
     }
 
     def test_modular_benchmarks(self):
-        """44/56 benchmarks should be modular (no N₅)."""
+        """53/69 benchmarks should be modular (no N₅)."""
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
             ss = build_statespace(ast)
@@ -206,7 +215,7 @@ class TestSummaryReport:
     """Generate a summary report of distributivity across all benchmarks."""
 
     def test_print_summary(self):
-        """Print classification summary for all 56 benchmarks."""
+        """Print classification summary for all 69 benchmarks."""
         results = []
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
@@ -242,8 +251,8 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 43/56 distributive, 12/56 non-modular (N₅), 1 modular
-        assert n_bool + n_dist == 43, (
-            f"Expected 43 distributive, got {n_bool + n_dist}"
+        # Empirical result: 51/69 distributive, 16/69 non-modular (N₅), 2 modular
+        assert n_bool + n_dist == 51, (
+            f"Expected 51 distributive, got {n_bool + n_dist}"
         )
-        assert n_lat == 12, f"Expected 12 lattice-only, got {n_lat}"
+        assert n_lat == 16, f"Expected 16 lattice-only, got {n_lat}"
