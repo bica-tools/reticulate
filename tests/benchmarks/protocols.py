@@ -1,6 +1,6 @@
 """Benchmark protocol definitions for the reticulate test suite.
 
-69 real-world and classic protocols expressed as session types using the
+79 real-world and classic protocols expressed as session types using the
 core grammar: branch (&), selection (+), parallel (||), recursion (rec),
 continuation (.), wait, and end.  No sequencing sugar.
 """
@@ -1290,6 +1290,222 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_states=3,
         expected_transitions=6,
         expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # ── Security Protocol Benchmarks (70–79) ─────────────────
+    # 70. Needham-Schroeder Public Key
+    BenchmarkProtocol(
+        name="Needham-Schroeder",
+        type_string=(
+            "&{alice_nonce: &{bob_nonce_reply: &{alice_confirm: "
+            "+{AUTHENTICATED: end, REPLAY_DETECTED: end}}}}"
+        ),
+        description=(
+            "Needham-Schroeder public-key authentication protocol: Alice "
+            "sends a nonce, Bob replies with both nonces encrypted, Alice "
+            "confirms. The selection models the verifier's decision — "
+            "authenticated or replay attack detected. Lowe (1995) found "
+            "the man-in-the-middle attack on the original 1978 protocol."
+        ),
+        expected_states=5,
+        expected_transitions=5,
+        expected_sccs=5,
+        uses_parallel=False,
+    ),
+    # 71. Kerberos Authentication
+    BenchmarkProtocol(
+        name="Kerberos",
+        type_string=(
+            "&{request_TGT: +{TGT_GRANTED: &{request_service_ticket: "
+            "+{TICKET_GRANTED: &{authenticate_to_service: "
+            "+{ACCESS_GRANTED: rec X . &{use_service: X, renew_ticket: "
+            "+{RENEWED: X, EXPIRED: end}, logout: end}, "
+            "ACCESS_DENIED: end}}, TICKET_DENIED: end}}, TGT_DENIED: end}}"
+        ),
+        description=(
+            "Kerberos authentication: request TGT from KDC, then request "
+            "service ticket from TGS, then authenticate to service. Each "
+            "step is gated by a selection (granted/denied). After access, "
+            "the service session supports use, ticket renewal, and logout. "
+            "Models the MIT Kerberos V5 three-party authentication flow."
+        ),
+        expected_states=9,
+        expected_transitions=14,
+        expected_sccs=8,
+        uses_parallel=False,
+    ),
+    # 72. SSH Handshake
+    BenchmarkProtocol(
+        name="SSH Handshake",
+        type_string=(
+            "&{protocol_version: &{key_exchange: &{server_auth: "
+            "+{HOST_VERIFIED: &{user_auth: +{AUTH_SUCCESS: "
+            "rec X . &{open_channel: &{exec_command: +{OUTPUT: X, "
+            "EXIT: &{close_channel: X}}}, disconnect: end}, "
+            "AUTH_FAILED: end}}, HOST_UNKNOWN: +{ACCEPT: &{user_auth: "
+            "+{AUTH_SUCCESS: rec X . &{open_channel: &{exec_command: "
+            "+{OUTPUT: X, EXIT: &{close_channel: X}}}, disconnect: end}, "
+            "AUTH_FAILED: end}}, REJECT: end}}}}}"
+        ),
+        description=(
+            "SSH handshake (RFC 4253): protocol version exchange, key "
+            "exchange (DH), server host key verification (verified or "
+            "unknown with accept/reject), user authentication, then a "
+            "multiplexed channel session with command execution. The "
+            "HOST_UNKNOWN branch models the trust-on-first-use pattern."
+        ),
+        expected_states=18,
+        expected_transitions=25,
+        expected_sccs=12,
+        uses_parallel=False,
+    ),
+    # 73. Diffie-Hellman Key Exchange
+    BenchmarkProtocol(
+        name="Diffie-Hellman",
+        type_string=(
+            "&{send_params: &{send_public_A: &{receive_public_B: "
+            "+{VALID: &{derive_shared_secret: &{verify_key: "
+            "+{CONFIRMED: end, MISMATCH: end}}}, INVALID_PARAMS: end}}}}"
+        ),
+        description=(
+            "Diffie-Hellman key exchange: send group parameters, exchange "
+            "public values, validate parameters, derive shared secret, "
+            "verify key agreement. The INVALID_PARAMS and MISMATCH exits "
+            "model parameter downgrade attacks and key confirmation failure."
+        ),
+        expected_states=8,
+        expected_transitions=9,
+        expected_sccs=8,
+        uses_parallel=False,
+    ),
+    # 74. Mutual TLS (mTLS)
+    BenchmarkProtocol(
+        name="Mutual TLS",
+        type_string=(
+            "&{client_hello: +{SERVER_HELLO: "
+            "(&{server_cert_verify: +{TRUSTED: wait, UNTRUSTED: wait}} || "
+            "&{client_cert_send: +{ACCEPTED: wait, REJECTED: wait}}) "
+            ". +{BOTH_OK: &{establish_channel: end}, AUTH_FAIL: end}, "
+            "INCOMPATIBLE: end}}"
+        ),
+        description=(
+            "Mutual TLS: after client/server hello, both parties verify "
+            "each other's certificates concurrently (server cert + client "
+            "cert in parallel). After synchronisation, a joint decision "
+            "determines whether both verifications passed. The parallel "
+            "constructor models simultaneous certificate validation."
+        ),
+        expected_states=13,
+        expected_transitions=24,
+        expected_sccs=13,
+        uses_parallel=True,
+    ),
+    # 75. Signal Protocol (Double Ratchet)
+    BenchmarkProtocol(
+        name="Signal Protocol",
+        type_string=(
+            "&{establish_session: &{x3dh_handshake: "
+            "+{KEYS_DERIVED: rec X . &{send_message: &{ratchet_step: X}, "
+            "receive_message: &{ratchet_step: X}, rekey: X, "
+            "close_session: end}, HANDSHAKE_FAILED: end}}}"
+        ),
+        description=(
+            "Signal Protocol with X3DH and Double Ratchet: establish a "
+            "session via Extended Triple Diffie-Hellman, then enter the "
+            "messaging loop with forward secrecy (each message ratchets "
+            "the key). Supports send, receive, explicit rekey, and session "
+            "close. Models the core of Signal/WhatsApp/Matrix encryption."
+        ),
+        expected_states=7,
+        expected_transitions=10,
+        expected_sccs=5,
+        uses_parallel=False,
+    ),
+    # 76. X.509 Certificate Chain Validation
+    BenchmarkProtocol(
+        name="Certificate Chain",
+        type_string=(
+            "&{receive_cert: &{check_signature: +{VALID_SIG: "
+            "&{check_issuer: +{ROOT_CA: &{check_expiry: "
+            "+{NOT_EXPIRED: &{check_revocation: +{NOT_REVOKED: end, "
+            "REVOKED: end}}, EXPIRED: end}}, INTERMEDIATE: "
+            "&{validate_parent: +{CHAIN_VALID: &{check_expiry: "
+            "+{NOT_EXPIRED: &{check_revocation: +{NOT_REVOKED: end, "
+            "REVOKED: end}}, EXPIRED: end}}, CHAIN_BROKEN: end}}}}, "
+            "INVALID_SIG: end}}}"
+        ),
+        description=(
+            "X.509 certificate chain validation: receive certificate, "
+            "check signature, then branch on issuer type (root CA or "
+            "intermediate). For intermediates, recursively validate the "
+            "parent certificate. Each path checks expiry and revocation "
+            "status (CRL/OCSP). Models the PKI trust chain traversal."
+        ),
+        expected_states=16,
+        expected_transitions=22,
+        expected_sccs=16,
+        uses_parallel=False,
+    ),
+    # 77. SAML Single Sign-On
+    BenchmarkProtocol(
+        name="SAML SSO",
+        type_string=(
+            "&{sp_request: &{redirect_to_idp: &{user_authenticate: "
+            "+{AUTH_OK: &{saml_assertion: &{send_assertion_to_sp: "
+            "+{VALID: &{create_session: end}, "
+            "INVALID_ASSERTION: end}}}, AUTH_FAIL: end}}}}"
+        ),
+        description=(
+            "SAML 2.0 Single Sign-On: service provider redirects user to "
+            "identity provider, user authenticates, IdP issues SAML "
+            "assertion, SP validates assertion and creates session. "
+            "Models the browser redirect SSO profile with assertion "
+            "validation as a security gate."
+        ),
+        expected_states=9,
+        expected_transitions=10,
+        expected_sccs=9,
+        uses_parallel=False,
+    ),
+    # 78. Zero-Knowledge Proof (Interactive)
+    BenchmarkProtocol(
+        name="Zero-Knowledge Proof",
+        type_string=(
+            "rec X . &{prover_commit: &{verifier_challenge: "
+            "&{prover_response: +{ACCEPT: X, REJECT: end}}}, "
+            "complete_proof: end}"
+        ),
+        description=(
+            "Interactive zero-knowledge proof: the prover commits, the "
+            "verifier sends a random challenge, the prover responds. "
+            "The verifier accepts (loop for more rounds) or rejects. "
+            "After sufficient rounds, the prover declares proof complete. "
+            "Models Schnorr identification and similar sigma protocols."
+        ),
+        expected_states=5,
+        expected_transitions=6,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 79. DNSSEC Validation
+    BenchmarkProtocol(
+        name="DNSSEC",
+        type_string=(
+            "&{query: &{receive_response: &{check_RRSIG: "
+            "+{SIG_VALID: &{follow_chain: +{DS_MATCH: "
+            "&{verify_DNSKEY: +{TRUSTED: end, UNTRUSTED: end}}, "
+            "DS_MISSING: end}}, SIG_INVALID: end, "
+            "NO_DNSSEC: +{INSECURE_OK: end, REQUIRE_SECURE: end}}}}}"
+        ),
+        description=(
+            "DNSSEC validation chain: query DNS, receive response with "
+            "RRSIG, validate signature, follow DS record chain to trust "
+            "anchor, verify DNSKEY. Handles unsigned zones (NO_DNSSEC) "
+            "with policy decision. Models RFC 4033-4035 validation."
+        ),
+        expected_states=10,
+        expected_transitions=14,
+        expected_sccs=10,
         uses_parallel=False,
     ),
 ]

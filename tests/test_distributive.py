@@ -20,7 +20,7 @@ from tests.benchmarks.protocols import BENCHMARKS
 # ---------------------------------------------------------------------------
 
 class TestBenchmarkDistributivity:
-    """Run distributivity check on all 37 benchmark protocols."""
+    """Run distributivity check on all 79 benchmark protocols."""
 
     @pytest.mark.parametrize(
         "bench",
@@ -53,6 +53,11 @@ class TestBenchmarkDistributivity:
         "Bell Pair",              # parallel, has N₅ — entangled measurement outcomes
         "Quantum Teleportation",  # parallel, has N₅ — parallel measurement+correction
         "Big Bang Nucleosynthesis",  # parallel, has N₅ — parallel fusion channels
+        # Security benchmarks:
+        "SSH Handshake",              # no parallel, has N₅ — HOST_UNKNOWN branch+select
+        "Mutual TLS",                 # parallel, has N₅ — parallel cert verification+select
+        "Certificate Chain",          # no parallel, has N₅ — intermediate chain+select
+        "DNSSEC",                     # no parallel, has N₅ — multi-path validation
     }
 
     # Benchmarks that are modular (M₃) but not distributive, without N₅:
@@ -192,10 +197,12 @@ class TestModularity:
         # Physics benchmarks (Step 157i):
         "Weak Decay (Beta)", "Bell Pair", "Quantum Teleportation",
         "Big Bang Nucleosynthesis",
+        # Security benchmarks:
+        "SSH Handshake", "Mutual TLS", "Certificate Chain", "DNSSEC",
     }
 
     def test_modular_benchmarks(self):
-        """53/69 benchmarks should be modular (no N₅)."""
+        """59/79 benchmarks should be modular (no N₅)."""
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
             ss = build_statespace(ast)
@@ -215,7 +222,7 @@ class TestSummaryReport:
     """Generate a summary report of distributivity across all benchmarks."""
 
     def test_print_summary(self):
-        """Print classification summary for all 69 benchmarks."""
+        """Print classification summary for all 79 benchmarks."""
         results = []
         for bench in BENCHMARKS:
             ast = parse(bench.type_string)
@@ -251,8 +258,8 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 51/69 distributive, 16/69 non-modular (N₅), 2 modular
-        assert n_bool + n_dist == 51, (
-            f"Expected 51 distributive, got {n_bool + n_dist}"
+        # Empirical result: 57/79 distributive, 20/79 non-modular (N₅), 2 modular
+        assert n_bool + n_dist == 57, (
+            f"Expected 57 distributive, got {n_bool + n_dist}"
         )
-        assert n_lat == 16, f"Expected 16 lattice-only, got {n_lat}"
+        assert n_lat == 20, f"Expected 20 lattice-only, got {n_lat}"
