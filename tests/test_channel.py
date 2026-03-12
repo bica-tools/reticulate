@@ -300,3 +300,128 @@ class TestRoleView:
         rv_b = role_view(ch, ss_d, ss_s, d, "right", "B")
         all_visible = set(rv_a.visible_transitions) | set(rv_b.visible_transitions)
         assert all_visible == set(ch.transitions)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 3: Global type bridge + benchmark sweep
+# ---------------------------------------------------------------------------
+
+
+def _get_benchmarks():
+    """Load benchmarks with ≤ 15 local states (product ≤ 225 states)."""
+    from tests.benchmarks.protocols import BENCHMARKS
+    from reticulate.parser import parse as _parse
+    from reticulate.statespace import build_statespace as _build
+    result = []
+    for bp in BENCHMARKS:
+        s = _parse(bp.type_string)
+        ss = _build(s)
+        if len(ss.states) <= 15:
+            result.append(bp)
+    return result
+
+
+def _get_binary_multiparty():
+    """Load multiparty benchmarks with exactly 2 roles."""
+    from tests.benchmarks.multiparty_protocols import MULTIPARTY_BENCHMARKS
+    return [mb for mb in MULTIPARTY_BENCHMARKS if len(mb.expected_roles) == 2]
+
+
+class TestChannelFromGlobal:
+    """Build channel from binary global types via projection."""
+
+    def test_request_response(self):
+        """Client -> Server : {request: Server -> Client : {response: end}}."""
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(
+            "Client -> Server : {request: Server -> Client : {response: end}}"
+        )
+        r = channel_from_global(g, "Client", "Server")
+        assert r.is_product_lattice is True
+        assert r.is_isomorphic is True
+        assert r.selection_complementary is True
+
+    def test_two_phase_commit(self):
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(
+            "Coord -> P : {prepare: "
+            "P -> Coord : {yes: Coord -> P : {commit: end}, "
+            "no: Coord -> P : {abort: end}}}"
+        )
+        r = channel_from_global(g, "Coord", "P")
+        assert r.is_product_lattice is True
+        assert r.selection_complementary is True
+
+    def test_streaming(self):
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(
+            "rec X . Producer -> Consumer : {data: X, done: end}"
+        )
+        r = channel_from_global(g, "Producer", "Consumer")
+        assert r.is_product_lattice is True
+        assert r.is_isomorphic is True
+
+    def test_negotiation(self):
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(
+            "rec X . Buyer -> Seller : {offer: "
+            "Seller -> Buyer : {accept: end, counter: X}}"
+        )
+        r = channel_from_global(g, "Buyer", "Seller")
+        assert r.is_product_lattice is True
+
+    def test_auth_service(self):
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(
+            "Client -> Server : {login: "
+            "Server -> Client : {granted: "
+            "rec X . Client -> Server : {request: "
+            "Server -> Client : {response: X}, "
+            "logout: end}, "
+            "denied: end}}"
+        )
+        r = channel_from_global(g, "Client", "Server")
+        assert r.is_product_lattice is True
+        assert r.selection_complementary is True
+
+    def test_raft_consensus(self):
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(
+            "Candidate -> Voter : {requestVote: "
+            "Voter -> Candidate : {granted: "
+            "Candidate -> Voter : {appendEntries: "
+            "Voter -> Candidate : {ack: end}}, "
+            "rejected: end}}"
+        )
+        r = channel_from_global(g, "Candidate", "Voter")
+        assert r.is_product_lattice is True
+
+
+class TestBenchmarkSweep:
+    """Sweep all 79 binary benchmarks: channel is lattice + complementary."""
+
+    @pytest.mark.parametrize("bp", _get_benchmarks(), ids=lambda bp: bp.name)
+    def test_benchmark_channel_is_lattice(self, bp):
+        s = parse(bp.type_string)
+        r = build_channel(s)
+        assert r.is_product_lattice is True, f"{bp.name}: channel not lattice"
+        assert r.is_isomorphic is True, f"{bp.name}: not isomorphic"
+        assert r.selection_complementary is True, f"{bp.name}: not complementary"
+        assert r.role_a_embedding is True, f"{bp.name}: role A not embedded"
+        assert r.role_b_embedding is True, f"{bp.name}: role B not embedded"
+
+    @pytest.mark.parametrize("mb", _get_binary_multiparty(), ids=lambda mb: mb.name)
+    def test_binary_multiparty_channel(self, mb):
+        """Binary multiparty benchmarks: projections yield channel."""
+        from reticulate.global_types import parse_global
+        from reticulate.channel import channel_from_global
+        g = parse_global(mb.global_type_string)
+        roles = sorted(mb.expected_roles)
+        r = channel_from_global(g, roles[0], roles[1])
+        assert r.is_product_lattice is True, f"{mb.name}: channel not lattice"
