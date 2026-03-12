@@ -425,3 +425,91 @@ class TestBenchmarkSweep:
         roles = sorted(mb.expected_roles)
         r = channel_from_global(g, roles[0], roles[1])
         assert r.is_product_lattice is True, f"{mb.name}: channel not lattice"
+
+
+# ---------------------------------------------------------------------------
+# Sprint 4: Edge cases + __init__.py re-exports
+# ---------------------------------------------------------------------------
+
+
+class TestChannelEdgeCases:
+    """Edge cases: parallel types, deeply nested, recursive with selection."""
+
+    def test_parallel_type_dual(self):
+        """Channel for '(S1 || S2)' — dual of parallel is parallel of duals."""
+        s = parse("(&{a: end} || &{b: end})")
+        r = build_channel(s)
+        assert r.is_product_lattice is True
+        assert r.is_isomorphic is True
+
+    def test_deeply_nested_branch_select(self):
+        """Three levels of alternating branch/select."""
+        s = parse("&{a: +{x: &{y: end}}}")
+        r = build_channel(s)
+        assert r.is_product_lattice is True
+        assert r.selection_complementary is True
+        assert r.role_a_embedding is True
+        assert r.role_b_embedding is True
+
+    def test_recursive_with_select(self):
+        """rec X . +{a: X, b: end} — recursive selection."""
+        s = parse("rec X . +{a: X, b: end}")
+        r = build_channel(s)
+        assert r.is_product_lattice is True
+        assert r.selection_complementary is True
+
+    def test_continuation_type(self):
+        """Parallel with continuation: (&{a: end} || &{b: end}) . &{c: end}."""
+        s = parse("(&{a: end} || &{b: end}) . &{c: end}")
+        r = build_channel(s)
+        assert r.is_product_lattice is True
+        assert r.is_isomorphic is True
+
+    def test_dual_of_parallel_is_parallel_of_duals(self):
+        """Verify dual(S1 || S2) = dual(S1) || dual(S2)."""
+        s = parse("(&{a: end} || +{b: end})")
+        d = dual(s)
+        assert isinstance(d, Parallel)
+        # dual(&{a: end}) = +{a: end}
+        assert isinstance(d.branches[0], Select)
+        # dual(+{b: end}) = &{b: end}
+        assert isinstance(d.branches[1], Branch)
+
+    def test_channel_import_from_init(self):
+        """Verify re-exports from __init__.py."""
+        import reticulate
+        assert hasattr(reticulate, 'ChannelResult')
+        assert hasattr(reticulate, 'RoleView')
+        assert hasattr(reticulate, 'build_channel')
+        assert hasattr(reticulate, 'channel_from_global')
+        assert hasattr(reticulate, 'check_branch_complementarity')
+        assert hasattr(reticulate, 'check_role_embedding')
+        assert hasattr(reticulate, 'role_view')
+
+    def test_symmetric_channel(self):
+        """Self-dual type: end is its own dual."""
+        r = build_channel(End())
+        assert r.type_str == "end"
+        assert r.dual_str == "end"
+        assert r.is_isomorphic is True
+
+    def test_wait_type(self):
+        """Channel for 'wait' — dual(wait) = wait."""
+        r = build_channel(Wait())
+        assert r.is_product_lattice is True
+        assert r.is_isomorphic is True
+
+    def test_multi_branch_select_mix(self):
+        """&{a: +{x: end}, b: +{y: end}} — each branch has a selection."""
+        s = parse("&{a: +{x: end}, b: +{y: end}}")
+        r = build_channel(s)
+        assert r.is_product_lattice is True
+        assert r.selection_complementary is True
+
+    def test_channel_states_product_invariant(self):
+        """channel_states == role_a_states * role_b_states always holds."""
+        for ts in ["end", "&{a: end}", "+{a: end}", "&{a: +{x: end}}",
+                    "rec X . &{a: X, b: end}"]:
+            s = parse(ts)
+            r = build_channel(s)
+            assert r.channel_states == r.role_a_states * r.role_b_states, ts

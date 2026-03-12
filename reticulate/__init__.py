@@ -173,6 +173,15 @@ from reticulate.realizability import (
     find_obstructions,
     generate_non_realizable,
 )
+from reticulate.channel import (
+    ChannelResult,
+    RoleView,
+    build_channel,
+    channel_from_global,
+    check_branch_complementarity,
+    check_role_embedding,
+    role_view,
+)
 from reticulate.context_free import (
     ChomskyClassification,
     analyze_trace_language,
@@ -338,4 +347,11 @@ __all__ = [
     "is_galois_pair",
     "label_closure",
     "state_closure",
+    "ChannelResult",
+    "RoleView",
+    "build_channel",
+    "channel_from_global",
+    "check_branch_complementarity",
+    "check_role_embedding",
+    "role_view",
 ]
