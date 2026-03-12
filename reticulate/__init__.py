@@ -151,6 +151,17 @@ from reticulate.composition_viz import (
     participant_dot,
     synchronized_dot,
 )
+from reticulate.polarity import (
+    PolarityResult,
+    all_labels,
+    build_concept_lattice,
+    build_polarity,
+    check_polarity,
+    compute_concepts,
+    is_galois_pair,
+    label_closure,
+    state_closure,
+)
 from reticulate.context_free import (
     ChomskyClassification,
     analyze_trace_language,
@@ -298,4 +309,13 @@ __all__ = [
     "role_dot_source",
     "role_hasse_diagram",
     "role_render_hasse",
+    "PolarityResult",
+    "all_labels",
+    "build_concept_lattice",
+    "build_polarity",
+    "check_polarity",
+    "compute_concepts",
+    "is_galois_pair",
+    "label_closure",
+    "state_closure",
 ]
