@@ -1,4 +1,4 @@
-"""Tests for subtyping (Step 7: Gay–Hole subtyping on session type ASTs)."""
+"""Tests for subtyping (Step 7 + Step 155a: Gay–Hole subtyping with parallel)."""
 
 import pytest
 
@@ -407,3 +407,165 @@ class TestResultTypes:
             is_subtype=True, has_embedding=True, coincides=True,
         )
         assert result.coincides
+
+
+# ---------------------------------------------------------------------------
+# Step 155a: Parallel subtyping (componentwise)
+# ---------------------------------------------------------------------------
+
+
+class TestParallelSubtyping:
+    """Step 155a: (S₁ || S₂) ≤ (T₁ || T₂) iff S₁ ≤ T₁ and S₂ ≤ T₂.
+
+    The parallel constructor is covariant in both components.  This yields
+    a product of embeddings: if S₁ embeds in T₁ and S₂ embeds in T₂,
+    then L(S₁)×L(S₂) embeds in L(T₁)×L(T₂).
+    """
+
+    def test_identical_parallel(self):
+        """(A || B) ≤ (A || B)."""
+        s = parse("(&{a: end} || &{b: end})")
+        assert is_subtype(s, s)
+
+    def test_wider_left_branch(self):
+        """(&{a: end, c: end} || &{b: end}) ≤ (&{a: end} || &{b: end})."""
+        s1 = parse("(&{a: end, c: end} || &{b: end})")
+        s2 = parse("(&{a: end} || &{b: end})")
+        assert is_subtype(s1, s2)
+
+    def test_wider_right_branch(self):
+        """(&{a: end} || &{b: end, c: end}) ≤ (&{a: end} || &{b: end})."""
+        s1 = parse("(&{a: end} || &{b: end, c: end})")
+        s2 = parse("(&{a: end} || &{b: end})")
+        assert is_subtype(s1, s2)
+
+    def test_wider_both_branches(self):
+        """(&{a: end, c: end} || &{b: end, d: end}) ≤ (&{a: end} || &{b: end})."""
+        s1 = parse("(&{a: end, c: end} || &{b: end, d: end})")
+        s2 = parse("(&{a: end} || &{b: end})")
+        assert is_subtype(s1, s2)
+
+    def test_narrower_left_fails(self):
+        """(&{a: end} || &{b: end}) ≤ (&{a: end, c: end} || &{b: end}) — FAILS."""
+        s1 = parse("(&{a: end} || &{b: end})")
+        s2 = parse("(&{a: end, c: end} || &{b: end})")
+        assert not is_subtype(s1, s2)
+
+    def test_narrower_right_fails(self):
+        """(&{a: end} || &{b: end}) ≤ (&{a: end} || &{b: end, c: end}) — FAILS."""
+        s1 = parse("(&{a: end} || &{b: end})")
+        s2 = parse("(&{a: end} || &{b: end, c: end})")
+        assert not is_subtype(s1, s2)
+
+    def test_parallel_vs_branch_incomparable(self):
+        """(A || B) and &{a: end} are incomparable constructors."""
+        s1 = parse("(&{a: end} || &{b: end})")
+        s2 = parse("&{a: end}")
+        assert not is_subtype(s1, s2)
+        assert not is_subtype(s2, s1)
+
+    def test_parallel_vs_select_incomparable(self):
+        """(A || B) and +{a: end} are incomparable constructors."""
+        s1 = parse("(&{a: end} || &{b: end})")
+        s2 = parse("+{a: end}")
+        assert not is_subtype(s1, s2)
+        assert not is_subtype(s2, s1)
+
+    def test_parallel_selection_componentwise(self):
+        """(+{A: end} || +{B: end}) ≤ (+{A: end, C: end} || +{B: end, D: end})."""
+        s1 = parse("(+{A: end} || +{B: end})")
+        s2 = parse("(+{A: end, C: end} || +{B: end, D: end})")
+        assert is_subtype(s1, s2)
+
+    def test_parallel_mixed_constructors(self):
+        """(&{a: end, b: end} || +{X: end}) ≤ (&{a: end} || +{X: end, Y: end})."""
+        s1 = parse("(&{a: end, b: end} || +{X: end})")
+        s2 = parse("(&{a: end} || +{X: end, Y: end})")
+        assert is_subtype(s1, s2)
+
+    def test_parallel_mixed_one_component_fails(self):
+        """(&{a: end} || +{X: end, Y: end}) ≤ (&{a: end, b: end} || +{X: end}) — FAILS.
+
+        Left component: &{a:end} not ≤ &{a:end, b:end} (missing b).
+        """
+        s1 = parse("(&{a: end} || +{X: end, Y: end})")
+        s2 = parse("(&{a: end, b: end} || +{X: end})")
+        assert not is_subtype(s1, s2)
+
+    def test_parallel_with_continuation_subtype(self):
+        """(A || B) . C ≤ (A || B) . C — reflexivity."""
+        s = parse("(&{a: end} || &{b: end}) . &{c: end}")
+        assert is_subtype(s, s)
+
+    def test_parallel_with_wider_continuation(self):
+        """(A || B) . &{c: end, d: end} ≤ (A || B) . &{c: end}."""
+        s1 = parse("(&{a: end} || &{b: end}) . &{c: end, d: end}")
+        s2 = parse("(&{a: end} || &{b: end}) . &{c: end}")
+        assert is_subtype(s1, s2)
+
+    def test_parallel_with_narrower_continuation_fails(self):
+        """(A || B) . &{c: end} ≤ (A || B) . &{c: end, d: end} — FAILS."""
+        s1 = parse("(&{a: end} || &{b: end}) . &{c: end}")
+        s2 = parse("(&{a: end} || &{b: end}) . &{c: end, d: end}")
+        assert not is_subtype(s1, s2)
+
+    def test_parallel_embedding_coincides(self):
+        """Width embedding correspondence for parallel types."""
+        s1 = parse("(&{a: end, c: end} || &{b: end})")
+        s2 = parse("(&{a: end} || &{b: end})")
+        result = check_width_embedding(s1, s2)
+        assert result.is_subtype
+        assert result.has_embedding
+        assert result.coincides
+
+    def test_parallel_non_subtype_may_have_embedding(self):
+        """Subtyping ⇒ embedding, but not converse (functor faithful, not full).
+
+        (&{a:end} || &{b:end}) has 4 states; (&{a:end,c:end} || &{b:end})
+        has 6 states.  The smaller embeds into the larger, but the subtyping
+        direction is reversed (narrower branch is NOT a subtype of wider).
+        """
+        s1 = parse("(&{a: end} || &{b: end})")
+        s2 = parse("(&{a: end, c: end} || &{b: end})")
+        result = check_width_embedding(s1, s2)
+        assert not result.is_subtype
+        # Embedding may still exist (faithful but not full)
+        assert result.has_embedding is True
+
+    def test_recursive_parallel_subtype(self):
+        """Parallel with recursive components: wider rec branch ≤ narrower."""
+        s1 = parse("(rec X . &{a: X, b: end} || &{c: end})")
+        s2 = parse("(rec X . &{a: X} || &{c: end})")
+        assert is_subtype(s1, s2)
+
+    def test_recursive_parallel_not_subtype(self):
+        """Parallel with recursive components: narrower rec branch ≤ wider — FAILS."""
+        s1 = parse("(rec X . &{a: X} || &{c: end})")
+        s2 = parse("(rec X . &{a: X, b: end} || &{c: end})")
+        assert not is_subtype(s1, s2)
+
+    def test_nested_parallel_subtype(self):
+        """Nested parallel: wider inner components."""
+        s1 = parse("(&{a: end, x: end} || &{b: end})")
+        s2 = parse("(&{a: end} || &{b: end})")
+        # Wrap in continuation
+        from reticulate.parser import Continuation
+        outer1 = Continuation(s1, parse("&{c: end, d: end}"))
+        outer2 = Continuation(s2, parse("&{c: end}"))
+        assert is_subtype(outer1, outer2)
+
+    def test_check_subtype_parallel_result(self):
+        """check_subtype returns proper SubtypingResult for parallel."""
+        s1 = parse("(&{a: end, c: end} || &{b: end})")
+        s2 = parse("(&{a: end} || &{b: end})")
+        result = check_subtype(s1, s2)
+        assert result.is_subtype
+        assert result.reason is None
+
+    def test_check_subtype_parallel_failure_reason(self):
+        """check_subtype explains parallel failure."""
+        s1 = parse("(&{a: end} || &{b: end})")
+        s2 = parse("(&{a: end, c: end} || &{b: end})")
+        result = check_subtype(s1, s2)
+        assert not result.is_subtype
+        assert result.reason is not None
