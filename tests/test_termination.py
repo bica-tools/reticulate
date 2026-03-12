@@ -192,7 +192,7 @@ class TestTerminationResult:
 
     def test_two_independent_non_terminating(self) -> None:
         """(rec X . X || rec Y . Y) — both fail."""
-        node = Parallel(Rec("X", Var("X")), Rec("Y", Var("Y")))
+        node = Parallel((Rec("X", Var("X")), Rec("Y", Var("Y"))))
         r = check_termination(node)
         assert r.is_terminating is False
         assert "X" in r.non_terminating_vars
@@ -240,7 +240,7 @@ class TestWFParallel:
         """Free in left, bound in right -> violation."""
         # rec X . (X || rec X . X) — X is free in left, bound in right
         # But this is contrived. Let's build the AST directly.
-        node = Parallel(Var("X"), Rec("X", Var("X")))
+        node = Parallel((Var("X"), Rec("X", Var("X"))))
         r = check_wf_parallel(node)
         assert r.is_well_formed is False
         assert any("cross-branch" in e for e in r.errors)
@@ -327,7 +327,7 @@ class TestHelpers:
         assert _free_vars(node) == {"Y"}
 
     def test_free_vars_parallel(self) -> None:
-        node = Parallel(Var("A"), Var("B"))
+        node = Parallel((Var("A"), Var("B")))
         assert _free_vars(node) == {"A", "B"}
 
     def test_free_vars_sequence(self) -> None:
@@ -354,7 +354,7 @@ class TestHelpers:
         assert _bound_vars(node) == {"X", "Y"}
 
     def test_bound_vars_parallel(self) -> None:
-        node = Parallel(Rec("X", Var("X")), Rec("Y", Var("Y")))
+        node = Parallel((Rec("X", Var("X")), Rec("Y", Var("Y"))))
         assert _bound_vars(node) == {"X", "Y"}
 
     def test_bound_vars_wait(self) -> None:
@@ -367,14 +367,14 @@ class TestHelpers:
         assert _contains_parallel(End()) is False
 
     def test_contains_parallel_direct(self) -> None:
-        assert _contains_parallel(Parallel(End(), End())) is True
+        assert _contains_parallel(Parallel((End(), End()))) is True
 
     def test_contains_parallel_nested_in_branch(self) -> None:
-        node = Branch((("m", Parallel(End(), End())),))
+        node = Branch((("m", Parallel((End(), End()))),))
         assert _contains_parallel(node) is True
 
     def test_contains_parallel_in_rec(self) -> None:
-        node = Rec("X", Parallel(Var("X"), End()))
+        node = Rec("X", Parallel((Var("X"), End())))
         assert _contains_parallel(node) is True
 
     def test_no_parallel(self) -> None:

@@ -7,10 +7,10 @@ Operates on the AST level (no state-space construction needed).
   This rules out divergent definitions like ``μX. &{loop: X}`` while permitting
   ``μX. &{read: X, done: end}``.
 
-- **WF-Par** (spec §5.1): For each ``S₁ ∥ S₂`` in the AST:
-  1. Both branches are terminating.
+- **WF-Par** (spec §5.1): For each ``S₁ ∥ S₂ ∥ … ∥ Sₙ`` in the AST:
+  1. All branches are terminating.
   2. No cross-branch recursion variables (free vars of one branch don't clash
-     with bound vars of the other).
+     with bound vars of any other).
   3. No nested ``∥`` inside a ``∥`` branch.
 """
 
@@ -114,8 +114,8 @@ def _has_exit_path(node: SessionType, forbidden: str) -> bool:
             return any(_has_exit_path(body, forbidden) for _, body in choices)
         case Continuation(left=left, right=right):
             return _has_exit_path(left, forbidden) and _has_exit_path(right, forbidden)
-        case Parallel(left=left, right=right):
-            return _has_exit_path(left, forbidden) and _has_exit_path(right, forbidden)
+        case Parallel(branches=branches):
+            return all(_has_exit_path(b, forbidden) for b in branches)
         case Rec(var=var, body=body):
             # Inner recursion — check through it. The inner var is a
             # different binding; we still track the outer forbidden var.
@@ -146,9 +146,9 @@ def _walk_for_termination(node: SessionType, acc: list[str]) -> None:
         case Continuation(left=left, right=right):
             _walk_for_termination(left, acc)
             _walk_for_termination(right, acc)
-        case Parallel(left=left, right=right):
-            _walk_for_termination(left, acc)
-            _walk_for_termination(right, acc)
+        case Parallel(branches=branches):
+            for b in branches:
+                _walk_for_termination(b, acc)
         case Rec(var=var, body=body):
             if not _has_exit_path(body, var):
                 acc.append(var)
@@ -183,13 +183,13 @@ def _walk_for_wf_par(node: SessionType, errors: list[str]) -> None:
         case Continuation(left=left, right=right):
             _walk_for_wf_par(left, errors)
             _walk_for_wf_par(right, errors)
-        case Parallel(left=left, right=right):
+        case Parallel(branches=branches):
             # Check this Parallel node
-            _check_wf_par_node(left, right, errors)
+            _check_wf_par_node(branches, errors)
             # Also recurse into branches (though WF-Par.3 forbids nested ∥,
             # we still want to report errors inside nested ones).
-            _walk_for_wf_par(left, errors)
-            _walk_for_wf_par(right, errors)
+            for b in branches:
+                _walk_for_wf_par(b, errors)
         case Rec(var=var, body=body):
             _walk_for_wf_par(body, errors)
         case _:
@@ -197,49 +197,50 @@ def _walk_for_wf_par(node: SessionType, errors: list[str]) -> None:
 
 
 def _check_wf_par_node(
-    left: SessionType,
-    right: SessionType,
+    branches: tuple[SessionType, ...],
     errors: list[str],
 ) -> None:
-    """Check the three WF-Par conditions for a single ``Parallel(left, right)``."""
-    # 1. Termination: both branches must be terminating
-    left_bad = _collect_non_terminating(left)
-    if left_bad:
-        errors.append(
-            f"left branch of ∥ is non-terminating "
-            f"(non-terminating vars: {', '.join(left_bad)})"
-        )
-    right_bad = _collect_non_terminating(right)
-    if right_bad:
-        errors.append(
-            f"right branch of ∥ is non-terminating "
-            f"(non-terminating vars: {', '.join(right_bad)})"
-        )
+    """Check the three WF-Par conditions for a single ``Parallel(branches)``."""
+    n = len(branches)
 
-    # 2. No cross-branch variables
-    left_free = _free_vars(left)
-    right_bound = _bound_vars(right)
-    cross_lr = left_free & right_bound
-    if cross_lr:
-        errors.append(
-            f"cross-branch variable(s) {', '.join(sorted(cross_lr))}: "
-            f"free in left, bound in right"
-        )
+    # For binary parallel, use "left"/"right" labels for backwards compatibility.
+    # For n-ary (n>2), use "branch 0", "branch 1", etc.
+    def _label(i: int) -> str:
+        if n == 2:
+            return "left" if i == 0 else "right"
+        return f"branch {i}"
 
-    right_free = _free_vars(right)
-    left_bound = _bound_vars(left)
-    cross_rl = right_free & left_bound
-    if cross_rl:
-        errors.append(
-            f"cross-branch variable(s) {', '.join(sorted(cross_rl))}: "
-            f"free in right, bound in left"
-        )
+    # 1. Termination: all branches must be terminating
+    for i, branch in enumerate(branches):
+        bad = _collect_non_terminating(branch)
+        if bad:
+            errors.append(
+                f"{_label(i)} branch of ∥ is non-terminating "
+                f"(non-terminating vars: {', '.join(bad)})"
+            )
+
+    # 2. No cross-branch variables — check all pairs (i, j) with i < j
+    free_sets = [_free_vars(b) for b in branches]
+    bound_sets = [_bound_vars(b) for b in branches]
+    for i in range(n):
+        for j in range(i + 1, n):
+            cross_ij = free_sets[i] & bound_sets[j]
+            if cross_ij:
+                errors.append(
+                    f"cross-branch variable(s) {', '.join(sorted(cross_ij))}: "
+                    f"free in {_label(i)}, bound in {_label(j)}"
+                )
+            cross_ji = free_sets[j] & bound_sets[i]
+            if cross_ji:
+                errors.append(
+                    f"cross-branch variable(s) {', '.join(sorted(cross_ji))}: "
+                    f"free in {_label(j)}, bound in {_label(i)}"
+                )
 
     # 3. No nested parallel
-    if _contains_parallel(left):
-        errors.append("left branch of ∥ contains nested ∥")
-    if _contains_parallel(right):
-        errors.append("right branch of ∥ contains nested ∥")
+    for i, branch in enumerate(branches):
+        if _contains_parallel(branch):
+            errors.append(f"{_label(i)} branch of ∥ contains nested ∥")
 
 
 # ---------------------------------------------------------------------------
@@ -265,8 +266,11 @@ def _free_vars(node: SessionType) -> set[str]:
             return result
         case Continuation(left=left, right=right):
             return _free_vars(left) | _free_vars(right)
-        case Parallel(left=left, right=right):
-            return _free_vars(left) | _free_vars(right)
+        case Parallel(branches=branches):
+            result = set()
+            for b in branches:
+                result |= _free_vars(b)
+            return result
         case Rec(var=var, body=body):
             return _free_vars(body) - {var}
         case _:
@@ -291,8 +295,11 @@ def _bound_vars(node: SessionType) -> set[str]:
             return result
         case Continuation(left=left, right=right):
             return _bound_vars(left) | _bound_vars(right)
-        case Parallel(left=left, right=right):
-            return _bound_vars(left) | _bound_vars(right)
+        case Parallel(branches=branches):
+            result = set()
+            for b in branches:
+                result |= _bound_vars(b)
+            return result
         case Rec(var=var, body=body):
             return {var} | _bound_vars(body)
         case _:
