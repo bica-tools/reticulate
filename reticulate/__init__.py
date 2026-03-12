@@ -162,6 +162,17 @@ from reticulate.polarity import (
     label_closure,
     state_closure,
 )
+from reticulate.realizability import (
+    NON_REALIZABLE_CATALOGUE,
+    Obstruction,
+    RealizabilityConditions,
+    RealizabilityResult,
+    check_determinism,
+    check_realizability,
+    check_realizability_conditions,
+    find_obstructions,
+    generate_non_realizable,
+)
 from reticulate.context_free import (
     ChomskyClassification,
     analyze_trace_language,
@@ -309,6 +320,15 @@ __all__ = [
     "role_dot_source",
     "role_hasse_diagram",
     "role_render_hasse",
+    "NON_REALIZABLE_CATALOGUE",
+    "Obstruction",
+    "RealizabilityConditions",
+    "RealizabilityResult",
+    "check_determinism",
+    "check_realizability",
+    "check_realizability_conditions",
+    "find_obstructions",
+    "generate_non_realizable",
     "PolarityResult",
     "all_labels",
     "build_concept_lattice",
