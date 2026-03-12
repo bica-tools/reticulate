@@ -147,11 +147,11 @@ class TestDualParallelContinuation:
 
     def test_parallel(self):
         """dual(&{a: end} || +{b: end}) = (+{a: end} || &{b: end})."""
-        s = Parallel(parse("&{a: end}"), parse("+{b: end}"))
+        s = Parallel((parse("&{a: end}"), parse("+{b: end}")))
         d = dual(s)
         assert isinstance(d, Parallel)
-        assert isinstance(d.left, Select)  # was Branch
-        assert isinstance(d.right, Branch)  # was Select
+        assert isinstance(d.branches[0], Select)  # was Branch
+        assert isinstance(d.branches[1], Branch)  # was Select
 
     def test_continuation(self):
         """dual((S₁ || S₂) . S₃) = (dual(S₁) || dual(S₂)) . dual(S₃)."""
@@ -187,7 +187,7 @@ class TestDualInvolution:
         assert is_structurally_equal(s, dual(dual(s)))
 
     def test_involution_parallel(self):
-        s = Parallel(parse("&{a: end}"), parse("+{b: end}"))
+        s = Parallel((parse("&{a: end}"), parse("+{b: end}")))
         assert is_structurally_equal(s, dual(dual(s)))
 
 

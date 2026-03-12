@@ -167,10 +167,14 @@ def _check_subtype(
                 return False
         return True
 
-    # Parallel: (S₁ || S₂) ≤ (T₁ || T₂)
+    # Parallel: (S₁ || … || Sₙ) ≤ (T₁ || … || Tₙ) — componentwise, same arity
     if isinstance(s1_unf, Parallel) and isinstance(s2_unf, Parallel):
-        return (_check_subtype(s1_unf.left, s2_unf.left, new_assumptions) and
-                _check_subtype(s1_unf.right, s2_unf.right, new_assumptions))
+        if len(s1_unf.branches) != len(s2_unf.branches):
+            return False
+        return all(
+            _check_subtype(b1, b2, new_assumptions)
+            for b1, b2 in zip(s1_unf.branches, s2_unf.branches)
+        )
 
     # Continuation: (S₁.S₂) ≤ (T₁.T₂)
     if isinstance(s1_unf, Continuation) and isinstance(s2_unf, Continuation):
@@ -203,10 +207,9 @@ def _substitute(body: SessionType, var: str, replacement: SessionType) -> Sessio
             (l, _substitute(s, var, replacement)) for l, s in body.choices
         ))
     elif isinstance(body, Parallel):
-        return Parallel(
-            _substitute(body.left, var, replacement),
-            _substitute(body.right, var, replacement),
-        )
+        return Parallel(tuple(
+            _substitute(b, var, replacement) for b in body.branches
+        ))
     elif isinstance(body, Continuation):
         return Continuation(
             _substitute(body.left, var, replacement),

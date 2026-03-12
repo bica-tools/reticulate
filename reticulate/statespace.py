@@ -204,8 +204,8 @@ class _Builder:
                 left_entry = self._build(left, env, right_entry)
                 return left_entry
 
-            case Parallel(left=left, right=right):
-                return self._build_parallel(left, right, end_id)
+            case Parallel(branches=branches):
+                return self._build_parallel(branches, end_id)
 
             case _:
                 raise TypeError(f"unknown AST node: {type(node).__name__}")
@@ -237,14 +237,13 @@ class _Builder:
 
     def _build_parallel(
         self,
-        left: SessionType,
-        right: SessionType,
+        branches: tuple[SessionType, ...],
         end_id: int,
     ) -> int:
-        """Build each branch independently, compute the product, embed it."""
-        left_ss = build_statespace(left)
-        right_ss = build_statespace(right)
-        prod = product_statespace(left_ss, right_ss)
+        """Build each branch independently, compute the n-ary product, embed it."""
+        from functools import reduce
+        spaces = [build_statespace(b) for b in branches]
+        prod = reduce(product_statespace, spaces)
 
         # Remap product state IDs into this builder's ID space.
         remap: dict[int, int] = {}

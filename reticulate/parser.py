@@ -68,9 +68,8 @@ class Select:
 
 @dataclass(frozen=True)
 class Parallel:
-    """Parallel composition ``S₁ || S₂``."""
-    left: "SessionType"
-    right: "SessionType"
+    """N-ary parallel composition ``S₁ || S₂ || … || Sₙ``."""
+    branches: tuple["SessionType", ...]
 
 
 @dataclass(frozen=True)
@@ -246,15 +245,18 @@ class _Parser:
         return result
 
     def _par_expr(self) -> SessionType:
-        """Parse parallel (lowest precedence, right-associative)."""
-        left = self._cont_expr()
+        """Parse parallel (lowest precedence, n-ary flat collection)."""
+        first = self._cont_expr()
 
-        if self._peek().kind is TokenKind.PAR:
+        if self._peek().kind is not TokenKind.PAR:
+            return first
+
+        parts: list[SessionType] = [first]
+        while self._peek().kind is TokenKind.PAR:
             self._advance()  # consume '||'
-            right = self._par_expr()  # right-associative
-            return Parallel(left, right)
+            parts.append(self._cont_expr())
 
-        return left
+        return Parallel(tuple(parts))
 
     def _cont_expr(self) -> SessionType:
         """Parse continuation ``.`` (binds tighter than ``||``).
@@ -416,8 +418,8 @@ def _pretty(node: SessionType, *, in_tight: bool) -> str:
                 for label, body in choices
             )
             return f"+{{{inner}}}"
-        case Parallel(left=left, right=right):
-            s = f"{_pretty(left, in_tight=False)} || {_pretty(right, in_tight=False)}"
+        case Parallel(branches=branches):
+            s = " || ".join(_pretty(b, in_tight=False) for b in branches)
             return f"({s})" if in_tight else s
         case Rec(var=var, body=body):
             return f"rec {var} . {_pretty(body, in_tight=True)}"

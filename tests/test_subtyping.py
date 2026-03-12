@@ -569,3 +569,29 @@ class TestParallelSubtyping:
         result = check_subtype(s1, s2)
         assert not result.is_subtype
         assert result.reason is not None
+
+    # -- N-ary parallel subtyping (Step 155a extension) --
+
+    def test_ternary_parallel_subtype(self):
+        """3-way parallel: componentwise wider ≤ narrower."""
+        s1 = parse("(&{a: end, x: end} || &{b: end, y: end} || &{c: end, z: end})")
+        s2 = parse("(&{a: end} || &{b: end} || &{c: end})")
+        assert is_subtype(s1, s2)
+
+    def test_ternary_parallel_not_subtype(self):
+        """3-way parallel: one narrower component breaks subtyping."""
+        s1 = parse("(&{a: end} || &{b: end} || &{c: end})")
+        s2 = parse("(&{a: end, x: end} || &{b: end} || &{c: end})")
+        assert not is_subtype(s1, s2)
+
+    def test_different_arity_incomparable(self):
+        """2-way vs 3-way parallel: different arity → not subtypes."""
+        s2 = parse("(&{a: end} || &{b: end})")
+        s3 = parse("(&{a: end} || &{b: end} || &{c: end})")
+        assert not is_subtype(s2, s3)
+        assert not is_subtype(s3, s2)
+
+    def test_ternary_parallel_reflexive(self):
+        """3-way parallel: reflexive subtyping."""
+        s = parse("(&{a: end} || &{b: end} || &{c: end})")
+        assert is_subtype(s, s)

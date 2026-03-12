@@ -76,7 +76,7 @@ class TestGuardedness:
         assert is_guarded(parse("+{a: rec X . +{b: X, c: end}}"))
 
     def test_guarded_in_parallel(self):
-        s = Rec("X", Parallel(Var("X"), End()))
+        s = Rec("X", Parallel((Var("X"), End())))
         # X is under Parallel constructor — guarded
         assert is_guarded(s)
 

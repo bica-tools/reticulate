@@ -7,7 +7,7 @@ exactly one meaning:
 - ``m`` alone is ``Var("m")``.
 - ``m . end`` is ``Continuation(Var("m"), End())``.
 - ``wait`` is ``Wait()`` (parallel branch completion).
-- ``(S1 || S2) . S3`` is ``Continuation(Parallel(S1, S2), S3)``.
+- ``(S1 || S2) . S3`` is ``Continuation(Parallel((S1, S2)), S3)``.
 """
 
 import pytest
@@ -173,12 +173,40 @@ class TestParserBasic:
 
     def test_parallel(self) -> None:
         result = parse("(end || end)")
-        assert result == Parallel(End(), End())
+        assert result == Parallel((End(), End()))
 
     def test_parallel_bare_infix(self) -> None:
-        """``X || Y`` at top level is Parallel(Var, Var)."""
+        """``X || Y`` at top level is Parallel((Var, Var))."""
         result = parse("X || Y")
-        expected = Parallel(Var("X"), Var("Y"))
+        expected = Parallel((Var("X"), Var("Y")))
+        assert result == expected
+
+    def test_parallel_ternary(self) -> None:
+        """``X || Y || Z`` is flat Parallel with 3 branches."""
+        result = parse("X || Y || Z")
+        expected = Parallel((Var("X"), Var("Y"), Var("Z")))
+        assert result == expected
+
+    def test_parallel_quaternary(self) -> None:
+        """``a || b || c || d`` is flat Parallel with 4 branches."""
+        result = parse("a || b || c || d")
+        expected = Parallel((Var("a"), Var("b"), Var("c"), Var("d")))
+        assert result == expected
+
+    def test_parallel_ternary_parenthesized(self) -> None:
+        """``(end || end || end)``."""
+        result = parse("(end || end || end)")
+        expected = Parallel((End(), End(), End()))
+        assert result == expected
+
+    def test_parallel_ternary_branches(self) -> None:
+        """``(&{a: end} || &{b: end} || &{c: end})``."""
+        result = parse("(&{a: end} || &{b: end} || &{c: end})")
+        expected = Parallel((
+            Branch((("a", End()),)),
+            Branch((("b", End()),)),
+            Branch((("c", End()),)),
+        ))
         assert result == expected
 
     def test_rec(self) -> None:
@@ -201,16 +229,16 @@ class TestParserBasic:
 
 class TestContinuation:
     def test_simple_continuation(self) -> None:
-        """``(end || end) . X`` is Continuation(Parallel(...), Var)."""
+        """``(end || end) . X`` is Continuation(Parallel((...)), Var)."""
         result = parse("(end || end) . X")
-        expected = Continuation(Parallel(End(), End()), Var("X"))
+        expected = Continuation(Parallel((End(), End())), Var("X"))
         assert result == expected
 
     def test_parallel_then_branch(self) -> None:
         """``(X || Y) . &{m: end}``."""
         result = parse("(X || Y) . &{m: end}")
         expected = Continuation(
-            Parallel(Var("X"), Var("Y")),
+            Parallel((Var("X"), Var("Y"))),
             Branch((("m", End()),)),
         )
         assert result == expected
@@ -218,15 +246,15 @@ class TestContinuation:
     def test_parallel_then_end(self) -> None:
         """``(end || end) . end``."""
         result = parse("(end || end) . end")
-        expected = Continuation(Parallel(End(), End()), End())
+        expected = Continuation(Parallel((End(), End())), End())
         assert result == expected
 
     def test_chained_continuation(self) -> None:
         """``(X || Y) . (end || end) . Z`` -- right-associative."""
         result = parse("(X || Y) . (end || end) . Z")
         expected = Continuation(
-            Parallel(Var("X"), Var("Y")),
-            Continuation(Parallel(End(), End()), Var("Z")),
+            Parallel((Var("X"), Var("Y"))),
+            Continuation(Parallel((End(), End())), Var("Z")),
         )
         assert result == expected
 
@@ -255,10 +283,10 @@ class TestContinuation:
         """Dot has higher precedence than ``||``."""
         # a . end || b . end
         result = parse("a . end || b . end")
-        expected = Parallel(
+        expected = Parallel((
             Continuation(Var("a"), End()),
             Continuation(Var("b"), End()),
-        )
+        ))
         assert result == expected
 
 
@@ -277,20 +305,20 @@ class TestWait:
     def test_wait_in_parallel_branches(self) -> None:
         """``(&{read: wait} || &{write: wait})``."""
         result = parse("(&{read: wait} || &{write: wait})")
-        expected = Parallel(
+        expected = Parallel((
             Branch((("read", Wait()),)),
             Branch((("write", Wait()),)),
-        )
+        ))
         assert result == expected
 
     def test_wait_parallel_then_continuation(self) -> None:
         """``(&{read: wait} || &{write: wait}) . &{close: end}``."""
         result = parse("(&{read: wait} || &{write: wait}) . &{close: end}")
         expected = Continuation(
-            Parallel(
+            Parallel((
                 Branch((("read", Wait()),)),
                 Branch((("write", Wait()),)),
-            ),
+            )),
             Branch((("close", End()),)),
         )
         assert result == expected
@@ -323,10 +351,10 @@ class TestSpecExamples:
         """(&{read: end} || &{write: end})"""
         src = "(&{read: end} || &{write: end})"
         result = parse(src)
-        expected = Parallel(
+        expected = Parallel((
             Branch((("read", End()),)),
             Branch((("write", End()),)),
-        )
+        ))
         assert result == expected
 
     def test_full_shared_file(self) -> None:
@@ -339,10 +367,10 @@ class TestSpecExamples:
             ("init", Branch((
                 ("open", Select((
                     ("OK", Continuation(
-                        Parallel(
+                        Parallel((
                             Branch((("read", Wait()),)),
                             Branch((("write", Wait()),)),
-                        ),
+                        )),
                         Branch((("close", End()),)),
                     )),
                     ("ERROR", End()),
@@ -370,7 +398,7 @@ class TestSpecExamples:
         src = "&{go: (&{a: end} || &{b: end}), stop: end}"
         result = parse(src)
         expected = Branch((
-            ("go", Parallel(Branch((("a", End()),)), Branch((("b", End()),)))),
+            ("go", Parallel((Branch((("a", End()),)), Branch((("b", End()),))))),
             ("stop", End()),
         ))
         assert result == expected
@@ -468,28 +496,36 @@ class TestPrettyPrinter:
         assert pretty(node) == "+{OK: end, ERR: end}"
 
     def test_parallel(self) -> None:
-        node = Parallel(End(), Var("X"))
+        node = Parallel((End(), Var("X")))
         assert pretty(node) == "end || X"
+
+    def test_parallel_ternary(self) -> None:
+        node = Parallel((Var("a"), Var("b"), Var("c")))
+        assert pretty(node) == "a || b || c"
+
+    def test_parallel_ternary_roundtrip(self) -> None:
+        src = "(&{a: end} || &{b: end} || &{c: end})"
+        assert parse(pretty(parse(src))) == parse(src)
 
     def test_rec(self) -> None:
         node = Rec("X", Var("X"))
         assert pretty(node) == "rec X . X"
 
     def test_continuation(self) -> None:
-        node = Continuation(Parallel(End(), End()), Var("X"))
+        node = Continuation(Parallel((End(), End())), Var("X"))
         assert pretty(node) == "(end || end) . X"
 
     def test_continuation_parallel_parens(self) -> None:
         """Parallel inside continuation gets parenthesized."""
         node = Continuation(
-            Parallel(Var("a"), Var("b")),
+            Parallel((Var("a"), Var("b"))),
             Branch((("close", End()),)),
         )
         assert pretty(node) == "(a || b) . &{close: end}"
 
     def test_rec_body_parallel_parens(self) -> None:
         """Parallel as rec body gets parenthesized."""
-        node = Rec("X", Parallel(Var("X"), End()))
+        node = Rec("X", Parallel((Var("X"), End())))
         assert pretty(node) == "rec X . (X || end)"
 
     def test_roundtrip_simple(self) -> None:
@@ -562,16 +598,16 @@ class TestEdgeCases:
     def test_parallel_with_complex_branches(self) -> None:
         src = "(&{a: end, b: end} || +{c: end, d: end})"
         result = parse(src)
-        expected = Parallel(
+        expected = Parallel((
             Branch((("a", End()), ("b", End()))),
             Select((("c", End()), ("d", End()))),
-        )
+        ))
         assert result == expected
 
     def test_rec_with_parallel_body(self) -> None:
         src = "rec X . (X || end)"
         result = parse(src)
-        expected = Rec("X", Parallel(Var("X"), End()))
+        expected = Rec("X", Parallel((Var("X"), End())))
         assert result == expected
 
     def test_select_with_nested_branches(self) -> None:
@@ -589,10 +625,10 @@ class TestEdgeCases:
         src = "(&{a: wait} || &{b: wait}) . &{c: end}"
         result = parse(src)
         expected = Continuation(
-            Parallel(
+            Parallel((
                 Branch((("a", Wait()),)),
                 Branch((("b", Wait()),)),
-            ),
+            )),
             Branch((("c", End()),)),
         )
         assert result == expected
@@ -613,5 +649,5 @@ class TestEdgeCases:
     def test_parallel_of_wait(self) -> None:
         """``(wait || wait)``."""
         result = parse("(wait || wait)")
-        expected = Parallel(Wait(), Wait())
+        expected = Parallel((Wait(), Wait()))
         assert result == expected

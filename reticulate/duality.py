@@ -95,7 +95,7 @@ def dual(s: SessionType) -> SessionType:
             (l, dual(cont)) for l, cont in s.choices
         ))
     elif isinstance(s, Parallel):
-        return Parallel(dual(s.left), dual(s.right))
+        return Parallel(tuple(dual(b) for b in s.branches))
     elif isinstance(s, Continuation):
         return Continuation(dual(s.left), dual(s.right))
     elif isinstance(s, Rec):

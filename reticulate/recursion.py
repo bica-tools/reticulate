@@ -130,9 +130,9 @@ def _check_guarded(
             for _, body in choices:
                 # Inside a constructor — all vars become guarded
                 _check_guarded(body, set(), result)
-        case Parallel(left=left, right=right):
-            _check_guarded(left, set(), result)
-            _check_guarded(right, set(), result)
+        case Parallel(branches=branches):
+            for b in branches:
+                _check_guarded(b, set(), result)
         case Continuation(left=left, right=right):
             _check_guarded(left, set(), result)
             _check_guarded(right, set(), result)
@@ -173,9 +173,9 @@ def _check_contractive(s: SessionType, result: list[str]) -> None:
         case Branch(choices=choices) | Select(choices=choices):
             for _, body in choices:
                 _check_contractive(body, result)
-        case Parallel(left=left, right=right):
-            _check_contractive(left, result)
-            _check_contractive(right, result)
+        case Parallel(branches=branches):
+            for b in branches:
+                _check_contractive(b, result)
         case Continuation(left=left, right=right):
             _check_contractive(left, result)
             _check_contractive(right, result)
@@ -227,11 +227,10 @@ def substitute(body: SessionType, var: str, replacement: SessionType) -> Session
             return Select(tuple(
                 (l, substitute(s, var, replacement)) for l, s in choices
             ))
-        case Parallel(left=left, right=right):
-            return Parallel(
-                substitute(left, var, replacement),
-                substitute(right, var, replacement),
-            )
+        case Parallel(branches=branches):
+            return Parallel(tuple(
+                substitute(b, var, replacement) for b in branches
+            ))
         case Continuation(left=left, right=right):
             return Continuation(
                 substitute(left, var, replacement),
@@ -258,8 +257,8 @@ def rec_depth(s: SessionType) -> int:
             if not choices:
                 return 0
             return max(rec_depth(body) for _, body in choices)
-        case Parallel(left=left, right=right):
-            return max(rec_depth(left), rec_depth(right))
+        case Parallel(branches=branches):
+            return max((rec_depth(b) for b in branches), default=0)
         case Continuation(left=left, right=right):
             return max(rec_depth(left), rec_depth(right))
         case Rec(body=body):
@@ -275,8 +274,8 @@ def count_rec_binders(s: SessionType) -> int:
             return 0
         case Branch(choices=choices) | Select(choices=choices):
             return sum(count_rec_binders(body) for _, body in choices)
-        case Parallel(left=left, right=right):
-            return count_rec_binders(left) + count_rec_binders(right)
+        case Parallel(branches=branches):
+            return sum(count_rec_binders(b) for b in branches)
         case Continuation(left=left, right=right):
             return count_rec_binders(left) + count_rec_binders(right)
         case Rec(body=body):
@@ -295,8 +294,11 @@ def recursive_vars(s: SessionType) -> frozenset[str]:
             for _, body in choices:
                 result = result | recursive_vars(body)
             return result
-        case Parallel(left=left, right=right):
-            return recursive_vars(left) | recursive_vars(right)
+        case Parallel(branches=branches):
+            result_set: frozenset[str] = frozenset()
+            for b in branches:
+                result_set = result_set | recursive_vars(b)
+            return result_set
         case Continuation(left=left, right=right):
             return recursive_vars(left) | recursive_vars(right)
         case Rec(var=var, body=body):
@@ -321,8 +323,8 @@ def is_tail_recursive(s: SessionType) -> bool:
             return True
         case Branch(choices=choices) | Select(choices=choices):
             return all(is_tail_recursive(body) for _, body in choices)
-        case Parallel(left=left, right=right):
-            return is_tail_recursive(left) and is_tail_recursive(right)
+        case Parallel(branches=branches):
+            return all(is_tail_recursive(b) for b in branches)
         case Continuation(left=left, right=right):
             return is_tail_recursive(left) and is_tail_recursive(right)
         case Rec(var=var, body=body):
@@ -340,10 +342,10 @@ def _all_uses_tail(s: SessionType, var: str) -> bool:
             return True  # A Var reference is fine — it IS tail position
         case Branch(choices=choices) | Select(choices=choices):
             return all(_all_uses_tail(body, var) for _, body in choices)
-        case Parallel(left=left, right=right):
+        case Parallel(branches=branches):
             # Var inside parallel is NOT tail recursive
             from reticulate.termination import _free_vars
-            if var in _free_vars(left) or var in _free_vars(right):
+            if any(var in _free_vars(b) for b in branches):
                 return False
             return True
         case Continuation(left=left, right=right):
