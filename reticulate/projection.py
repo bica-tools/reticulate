@@ -148,10 +148,10 @@ def _project(g: GlobalType, role: str, in_progress: set[str]) -> SessionType:
             in_right = role in right_roles
 
             if in_left and in_right:
-                return Parallel(
+                return Parallel((
                     _project(left, role, in_progress),
                     _project(right, role, in_progress),
-                )
+                ))
             elif in_left:
                 return _project(left, role, in_progress)
             elif in_right:

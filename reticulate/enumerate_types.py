@@ -124,10 +124,10 @@ def _enumerate(
         right_types = list(_enumerate_parallel_branch(depth - 1, config, rec_var))
         for left in left_types:
             for right in right_types:
-                yield Parallel(left, right)
+                yield Parallel((left, right))
                 # Also yield with continuation: (S1 || S2) . S3
                 for cont in _enumerate(depth - 1, config, rec_var):
-                    yield Continuation(Parallel(left, right), cont)
+                    yield Continuation(Parallel((left, right)), cont)
 
     # Recursion: rec X . S
     if config.include_recursion and rec_var is None:
@@ -177,7 +177,7 @@ def _contains_var(node: SessionType, var_name: str) -> bool:
     elif isinstance(node, (Branch, Select)):
         return any(_contains_var(s, var_name) for _, s in node.choices)
     elif isinstance(node, Parallel):
-        return _contains_var(node.left, var_name) or _contains_var(node.right, var_name)
+        return any(_contains_var(b, var_name) for b in node.branches)
     elif isinstance(node, Rec):
         return _contains_var(node.body, var_name)
     elif isinstance(node, Continuation):
