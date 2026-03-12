@@ -40,7 +40,7 @@ class TestDesugarIdentity:
         assert desugar(node) == node
 
     def test_parallel(self) -> None:
-        node = Parallel(End(), Wait())
+        node = Parallel((End(), Wait()))
         assert desugar(node) == node
 
     def test_rec(self) -> None:
@@ -48,7 +48,7 @@ class TestDesugarIdentity:
         assert desugar(node) == node
 
     def test_continuation(self) -> None:
-        node = Continuation(Parallel(End(), End()), End())
+        node = Continuation(Parallel((End(), End())), End())
         assert desugar(node) == node
 
 
@@ -62,7 +62,7 @@ class TestDesugarRecursive:
 
     def test_nested_parallel_in_continuation(self) -> None:
         node = Continuation(
-            Parallel(Branch((("a", End()),)), Branch((("b", End()),))),
+            Parallel((Branch((("a", End()),)), Branch((("b", End()),)))),
             End(),
         )
         result = desugar(node)
@@ -71,7 +71,7 @@ class TestDesugarRecursive:
     def test_deeply_nested(self) -> None:
         node = Rec("X", Branch((
             ("m", Select((
-                ("OK", Parallel(Branch((("a", Wait()),)), Branch((("b", Wait()),)))),
+                ("OK", Parallel((Branch((("a", Wait()),)), Branch((("b", Wait()),))))),
                 ("ERR", End()),
             ))),
         )))
@@ -135,12 +135,12 @@ class TestEnsugarOtherNodes:
         assert ensugar(node) == "+{OK: end, ERR: X}"
 
     def test_parallel(self) -> None:
-        node = Parallel(End(), End())
+        node = Parallel((End(), End()))
         assert ensugar(node) == "end || end"
 
     def test_parallel_parenthesised_in_tight(self) -> None:
         # Parallel inside continuation needs parens
-        node = Continuation(Parallel(End(), End()), End())
+        node = Continuation(Parallel((End(), End())), End())
         assert ensugar(node) == "(end || end) . end"
 
     def test_rec(self) -> None:
@@ -153,7 +153,7 @@ class TestEnsugarOtherNodes:
 
     def test_continuation(self) -> None:
         node = Continuation(
-            Parallel(Branch((("a", Wait()),)), Branch((("b", Wait()),))),
+            Parallel((Branch((("a", Wait()),)), Branch((("b", Wait()),)))),
             End(),
         )
         assert ensugar(node) == "(a . wait || b . wait) . end"

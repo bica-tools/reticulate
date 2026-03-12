@@ -113,10 +113,10 @@ def _find_continuation_recursion(s: SessionType, bound_vars: set[str]) -> bool:
                 _find_continuation_recursion(body, bound_vars)
                 for _, body in choices
             )
-        case Parallel(left=left, right=right):
-            return (
-                _find_continuation_recursion(left, bound_vars)
-                or _find_continuation_recursion(right, bound_vars)
+        case Parallel(branches=branches):
+            return any(
+                _find_continuation_recursion(b, bound_vars)
+                for b in branches
             )
         case Continuation(left=left, right=right):
             # Check if the left side contains any bound recursive vars
@@ -170,10 +170,10 @@ def _compute_stack_bound(
                 _compute_stack_bound(body, bound_vars, current_depth)
                 for _, body in choices
             )
-        case Parallel(left=left, right=right):
+        case Parallel(branches=branches):
             return max(
-                _compute_stack_bound(left, bound_vars, current_depth),
-                _compute_stack_bound(right, bound_vars, current_depth),
+                (_compute_stack_bound(b, bound_vars, current_depth) for b in branches),
+                default=current_depth,
             )
         case Continuation(left=left, right=right):
             from reticulate.termination import _free_vars
@@ -291,8 +291,8 @@ def _contains_continuation(s: SessionType) -> bool:
             return True
         case Branch(choices=choices) | Select(choices=choices):
             return any(_contains_continuation(body) for _, body in choices)
-        case Parallel(left=left, right=right):
-            return _contains_continuation(left) or _contains_continuation(right)
+        case Parallel(branches=branches):
+            return any(_contains_continuation(b) for b in branches)
         case Rec(body=body):
             return _contains_continuation(body)
         case _:

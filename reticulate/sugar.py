@@ -22,8 +22,8 @@ def desugar(node: SessionType) -> SessionType:
             return Branch(tuple((label, desugar(body)) for label, body in choices))
         case Select(choices=choices):
             return Select(tuple((label, desugar(body)) for label, body in choices))
-        case Parallel(left=left, right=right):
-            return Parallel(desugar(left), desugar(right))
+        case Parallel(branches=branches):
+            return Parallel(tuple(desugar(b) for b in branches))
         case Rec(var=var, body=body):
             return Rec(var, desugar(body))
         case Continuation(left=left, right=right):
@@ -60,8 +60,8 @@ def _ensugar(node: SessionType, *, in_tight: bool) -> str:
                 for label, body in choices
             )
             return f"+{{{inner}}}"
-        case Parallel(left=left, right=right):
-            s = f"{_ensugar(left, in_tight=False)} || {_ensugar(right, in_tight=False)}"
+        case Parallel(branches=branches):
+            s = " || ".join(_ensugar(b, in_tight=False) for b in branches)
             return f"({s})" if in_tight else s
         case Rec(var=var, body=body):
             return f"rec {var} . {_ensugar(body, in_tight=True)}"
