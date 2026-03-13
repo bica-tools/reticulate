@@ -7,7 +7,7 @@ Given two state spaces L₁ and L₂, constructs the product poset L₁ × L₂:
 Transitions from (s₁, s₂) include all transitions from s₁ (advancing the
 left component) and all transitions from s₂ (advancing the right component).
 
-See docs/parallel-constructor-spec.md Section 4.2.
+See docs/specs/parallel-constructor-spec.md Section 4.2.
 """
 
 from __future__ import annotations

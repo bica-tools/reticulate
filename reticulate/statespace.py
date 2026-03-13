@@ -5,7 +5,7 @@ representing all reachable protocol states and transitions.
 
 For sequential types, the state space is a directed graph (finite automaton).
 For parallel types (∥), the state space is the product of the component
-state spaces (see product.py and docs/parallel-constructor-spec.md §4).
+state spaces (see product.py and docs/specs/parallel-constructor-spec.md §4).
 """
 
 from __future__ import annotations
