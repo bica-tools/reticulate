@@ -173,6 +173,14 @@ from reticulate.realizability import (
     find_obstructions,
     generate_non_realizable,
 )
+from reticulate.async_channel import (
+    AsyncChannelResult,
+    build_async_channel,
+    build_async_statespace,
+    check_sync_embedding,
+    async_channel_from_global,
+    async_growth_ratio,
+)
 from reticulate.channel import (
     ChannelResult,
     RoleView,
@@ -347,6 +355,12 @@ __all__ = [
     "is_galois_pair",
     "label_closure",
     "state_closure",
+    "AsyncChannelResult",
+    "build_async_channel",
+    "build_async_statespace",
+    "check_sync_embedding",
+    "async_channel_from_global",
+    "async_growth_ratio",
     "ChannelResult",
     "RoleView",
     "build_channel",
