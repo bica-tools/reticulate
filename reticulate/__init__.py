@@ -225,6 +225,17 @@ from reticulate.product_viz import (
     render_3d_product,
     render_grid_hasse,
 )
+from reticulate.coproduct import (
+    CoproductCandidate,
+    CoproductResult,
+    InjectionMap,
+    check_coproduct,
+    check_coproduct_universal_property,
+    coalesced_sum,
+    is_coproduct,
+    linear_sum,
+    separated_sum,
+)
 from reticulate.visualize import (
     dot_source,
     hasse_diagram,
@@ -396,6 +407,15 @@ __all__ = [
     "check_branch_complementarity",
     "check_role_embedding",
     "role_view",
+    "CoproductCandidate",
+    "CoproductResult",
+    "InjectionMap",
+    "check_coproduct",
+    "check_coproduct_universal_property",
+    "coalesced_sum",
+    "is_coproduct",
+    "linear_sum",
+    "separated_sum",
     "factored_dashboard",
     "factored_dot_source",
     "grid_dot_source",
