@@ -263,3 +263,29 @@ class TestTestGen:
         out = _run(["--test-gen", "--framework", "testng", "&{a: &{b: end}}"], capsys)
         assert "expectedExceptions" in out
         assert "assertThrows" not in out
+
+
+# ---------------------------------------------------------------------------
+# --version and --distributive
+# ---------------------------------------------------------------------------
+
+
+class TestVersionAndDistributive:
+    def test_version(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--version"])
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "0.1.0" in out
+
+    def test_distributive_end(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--distributive", "end"], capsys)
+        assert "Distributive" in out or "Boolean" in out
+
+    def test_distributive_diamond(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["--distributive", "&{a: end, b: end}"], capsys)
+        assert "Distributiv" in out
+
+    def test_distributive_only_with_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        out = _run(["end"], capsys)
+        assert "Distributiv" not in out

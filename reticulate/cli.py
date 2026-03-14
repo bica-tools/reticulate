@@ -12,10 +12,12 @@ from __future__ import annotations
 import argparse
 import sys
 
-from reticulate.lattice import check_lattice, compute_meet, compute_join
+from reticulate.lattice import check_distributive, check_lattice, compute_meet, compute_join
 from reticulate.parser import ParseError, parse, pretty
 from reticulate.statespace import StateSpace, build_statespace
 from reticulate.visualize import dot_source, render_hasse
+
+__version__ = "0.1.0"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -23,6 +25,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="session2lattice",
         description="Session type analyzer \u2014 parse, build state space, check lattice properties.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "type_string",
@@ -105,6 +112,11 @@ def main(argv: list[str] | None = None) -> None:
         default="svg",
         choices=["png", "svg", "pdf"],
         help="Output format for coverage diagrams (default: svg)",
+    )
+    parser.add_argument(
+        "--distributive",
+        action="store_true",
+        help="Check distributivity (Birkhoff classification)",
     )
 
     args = parser.parse_args(argv)
@@ -220,7 +232,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     # Default: text summary
-    _print_summary(args.type_string, ast, ss, result)
+    _print_summary(args.type_string, ast, ss, result, distributive=args.distributive)
 
 
 def _print_summary(
@@ -228,6 +240,8 @@ def _print_summary(
     ast: object,
     ss: object,
     result: object,
+    *,
+    distributive: bool = False,
 ) -> None:
     """Print structured text summary to stdout."""
     from reticulate.lattice import LatticeResult
@@ -261,6 +275,16 @@ def _print_summary(
         a, b, kind = result.counterexample
         kind_str = "no meet" if kind == "no_meet" else "no join"
         print(f"  Counterexample: states {a} and {b} have {kind_str}")
+
+    if distributive and result.is_lattice:
+        dr = check_distributive(ss)
+        label = dr.classification.replace("_", " ").title()
+        print()
+        print(f"Distributivity: {label}")
+        if dr.has_n5 and dr.n5_witness is not None:
+            print(f"  N\u2085 witness: {dr.n5_witness}")
+        if dr.has_m3 and dr.m3_witness is not None:
+            print(f"  M\u2083 witness: {dr.m3_witness}")
 
 
 def _print_lattice(

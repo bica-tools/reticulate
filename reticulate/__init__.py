@@ -4,6 +4,8 @@ Public API re-exports from the parser, statespace, product, lattice,
 termination, morphism, and visualize modules.
 """
 
+__version__ = "0.1.0"
+
 from reticulate.coverage import (
     CoverageFrame,
     CoverageResult,
@@ -208,6 +210,7 @@ from reticulate.visualize import (
 )
 
 __all__ = [
+    "__version__",
     "Branch",
     "CoverageFrame",
     "CoverageResult",
