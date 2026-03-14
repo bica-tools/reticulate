@@ -38,6 +38,16 @@ def _truncate(label: str, max_len: int = 30) -> str:
     return label[:max_len] + "\u2026"
 
 
+def _lerp_color(c1: str, c2: str, t: float) -> str:
+    """Linearly interpolate between two hex colors.  *t* in [0, 1]."""
+    r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+    r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+    r = int(r1 + (r2 - r1) * t)
+    g = int(g1 + (g2 - g1) * t)
+    b = int(b1 + (b2 - b1) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _dot_to_svg(dot: str, *, engine: str = "dot") -> str:
     """Convert DOT source to inline SVG."""
     proc = subprocess.run(
@@ -196,17 +206,28 @@ def render_3d_product(
     title: str | None = None,
     labels: bool = True,
 ) -> str:
-    """Generate interactive 3D HTML for a ternary product.
+    """Generate interactive 3D HTML for a product with 3+ factors.
+
+    The first 3 factors map to spatial X/Y/Z axes.  Extra dimensions
+    (4th, 5th, ...) are encoded as a color gradient from warm (top)
+    to cool (bottom) so that all product structure remains visible.
 
     Returns *output_path*.
     """
-    _validate_product(ss, ndim=3)
+    _validate_product(ss)
     assert ss.product_factors is not None
     assert ss.product_coords is not None
+    if len(ss.product_factors) < 3:
+        raise ValueError(
+            f"Expected at least 3 factors, got {len(ss.product_factors)}"
+        )
 
     factors = ss.product_factors
+    ndim = len(factors)
     orders = [_topo_order(f) for f in factors]
     ranks = [{s: i for i, s in enumerate(order)} for order in orders]
+    # max rank per extra dimension (for normalising color)
+    extra_maxes = [max(1, len(orders[d]) - 1) for d in range(3, ndim)]
 
     # Build node data
     nodes = []
@@ -216,7 +237,22 @@ def render_3d_product(
         y = ranks[1].get(coord[1], 0)
         z = ranks[2].get(coord[2], 0)
         lbl = ss.labels.get(sid, str(sid)) if labels else str(sid)
-        color = "#2563eb" if sid == ss.top else "#16a34a" if sid == ss.bottom else "#9ca3af"
+
+        if sid == ss.top:
+            color = "#2563eb"
+        elif sid == ss.bottom:
+            color = "#16a34a"
+        elif ndim > 3:
+            # Encode extra dims as hue: average normalised position in [0,1]
+            # 0 (top) → warm orange, 1 (bottom) → cool purple
+            t_vals = [
+                ranks[d].get(coord[d], 0) / extra_maxes[d - 3]
+                for d in range(3, ndim)
+            ]
+            t = sum(t_vals) / len(t_vals)
+            color = _lerp_color("#f97316", "#7c3aed", t)  # orange→purple
+        else:
+            color = "#9ca3af"
         nodes.append({"id": sid, "x": x, "y": y, "z": z, "label": lbl, "color": color})
 
     # Build edge data
@@ -224,7 +260,7 @@ def render_3d_product(
     for src, lbl, tgt in ss.transitions:
         edges.append({"src": src, "tgt": tgt, "label": lbl})
 
-    disp_title = _html_escape(title or "3D Product Lattice")
+    disp_title = _html_escape(title or f"{ndim}D Product Lattice")
 
     # Factor labels for axes
     axis_labels = []
@@ -243,7 +279,11 @@ def render_3d_product(
     html.append(f'{len(nodes)} states, {len(edges)} transitions<br>')
     html.append(f'X: {_html_escape(axis_labels[0])}<br>')
     html.append(f'Y: {_html_escape(axis_labels[1])}<br>')
-    html.append(f'Z: {_html_escape(axis_labels[2])}</div>')
+    html.append(f'Z: {_html_escape(axis_labels[2])}')
+    if ndim > 3:
+        extra = ", ".join(_html_escape(axis_labels[d]) for d in range(3, ndim))
+        html.append(f'<br>Color: {extra}')
+    html.append('</div>')
     html.append('<div id="tooltip"></div>')
 
     html.append('<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>')

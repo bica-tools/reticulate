@@ -44,6 +44,12 @@ def non_parallel() -> StateSpace:
 
 
 @pytest.fixture
+def par4() -> StateSpace:
+    """4-factor parallel: (&{a: end} || &{b: end} || &{c: end} || &{d: end})."""
+    return build_statespace(parse("(&{a: end} || &{b: end} || &{c: end} || &{d: end})"))
+
+
+@pytest.fixture
 def par2_deep() -> StateSpace:
     """Binary parallel with deeper factors."""
     return build_statespace(parse("(&{a: &{c: end}} || &{b: end})"))
@@ -250,7 +256,7 @@ class TestThreeD:
             render_3d_product(non_parallel, "/tmp/nope")
 
     def test_error_on_2d(self, par2: StateSpace) -> None:
-        with pytest.raises(ValueError, match="Expected 3 factors, got 2"):
+        with pytest.raises(ValueError, match="Expected at least 3 factors, got 2"):
             render_3d_product(par2, "/tmp/nope")
 
     def test_node_count(self, par3: StateSpace) -> None:
@@ -282,6 +288,25 @@ class TestThreeD:
             path = os.path.join(tmpdir, "test3d")
             out = render_3d_product(par3, path)
             assert out == path + ".html"
+
+    def test_4d_product(self, par4: StateSpace) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test4d")
+            out = render_3d_product(par4, path)
+            with open(out) as f:
+                html = f.read()
+            assert "Color:" in html
+            assert "Factor 4" in html
+            assert f"{len(par4.states)} states" in html
+
+    def test_4d_has_gradient_colors(self, par4: StateSpace) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test4d")
+            render_3d_product(par4, path)
+            with open(path + ".html") as f:
+                html = f.read()
+            # Should have orange-purple gradient colors (not just gray)
+            assert "#f97316" in html or "#7c3aed" in html or "color:\"#" in html
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +428,13 @@ class TestCLI:
         from reticulate.cli import main
         with pytest.raises(SystemExit):
             main(["--3d", "(&{a: end} || &{b: end})"])
+
+    def test_3d_on_4d(self) -> None:
+        from reticulate.cli import main
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test4d")
+            main(["--3d", path, "(&{a: end} || &{b: end} || &{c: end} || &{d: end})"])
+            assert os.path.exists(path + ".html")
 
     def test_grid_on_3d_error(self) -> None:
         from reticulate.cli import main
