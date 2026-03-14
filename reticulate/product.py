@@ -85,8 +85,14 @@ def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
 
     coord_map: dict[int, tuple[int, ...]] = {}
     for (s1, s2), pid in pair_to_id.items():
-        left_coord = left.product_coords[s1] if left.product_coords else (s1,)
-        right_coord = right.product_coords[s2] if right.product_coords else (s2,)
+        if left.product_coords and s1 in left.product_coords:
+            left_coord = left.product_coords[s1]
+        else:
+            left_coord = (s1,)
+        if right.product_coords and s2 in right.product_coords:
+            right_coord = right.product_coords[s2]
+        else:
+            right_coord = (s2,)
         coord_map[pid] = left_coord + right_coord
 
     return SS(
