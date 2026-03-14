@@ -78,6 +78,17 @@ def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
     top = pair_to_id[(left.top, right.top)]
     bottom = pair_to_id[(left.bottom, right.bottom)]
 
+    # Build product coordinate map and collect factors
+    left_factors = left.product_factors or [left]
+    right_factors = right.product_factors or [right]
+    factors = list(left_factors) + list(right_factors)
+
+    coord_map: dict[int, tuple[int, ...]] = {}
+    for (s1, s2), pid in pair_to_id.items():
+        left_coord = left.product_coords[s1] if left.product_coords else (s1,)
+        right_coord = right.product_coords[s2] if right.product_coords else (s2,)
+        coord_map[pid] = left_coord + right_coord
+
     return SS(
         states=set(pair_to_id.values()),
         transitions=transitions,
@@ -85,4 +96,6 @@ def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
         bottom=bottom,
         labels=id_labels,
         selection_transitions=selection_transitions,
+        product_coords=coord_map,
+        product_factors=factors,
     )

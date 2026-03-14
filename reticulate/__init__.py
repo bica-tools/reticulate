@@ -200,6 +200,13 @@ from reticulate.context_free import (
     is_regular,
     stack_depth_bound,
 )
+from reticulate.product_viz import (
+    factored_dashboard,
+    factored_dot_source,
+    grid_dot_source,
+    render_3d_product,
+    render_grid_hasse,
+)
 from reticulate.visualize import (
     dot_source,
     hasse_diagram,
@@ -371,4 +378,9 @@ __all__ = [
     "check_branch_complementarity",
     "check_role_embedding",
     "role_view",
+    "factored_dashboard",
+    "factored_dot_source",
+    "grid_dot_source",
+    "render_3d_product",
+    "render_grid_hasse",
 ]

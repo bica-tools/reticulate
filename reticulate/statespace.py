@@ -45,6 +45,8 @@ class StateSpace:
     bottom: int = 0
     labels: dict[int, str] = field(default_factory=dict)
     selection_transitions: set[tuple[int, str, int]] = field(default_factory=set)
+    product_coords: dict[int, tuple[int, ...]] | None = field(default=None)
+    product_factors: list["StateSpace"] | None = field(default=None)
 
     def enabled(self, state: int) -> list[tuple[str, int]]:
         """Return ``(label, target)`` pairs for transitions from *state*."""
@@ -112,6 +114,8 @@ class _Builder:
         self._states: dict[int, str] = {}
         self._transitions: list[tuple[int, str, int]] = []
         self._selection_transitions: set[tuple[int, str, int]] = set()
+        self._product_coords: dict[int, tuple[int, ...]] | None = None
+        self._product_factors: list[StateSpace] | None = None
 
     def _fresh(self, label: str) -> int:
         sid = self._next_id
@@ -132,6 +136,13 @@ class _Builder:
         reachable_selections = {
             (s, l, t) for s, l, t in self._selection_transitions if s in reachable
         }
+        # Remap product coords to only include reachable states
+        product_coords = None
+        if self._product_coords is not None:
+            product_coords = {
+                s: c for s, c in self._product_coords.items() if s in reachable
+            }
+
         return StateSpace(
             states=reachable,
             transitions=reachable_transitions,
@@ -139,6 +150,8 @@ class _Builder:
             bottom=end_id,
             labels={s: self._states[s] for s in reachable if s in self._states},
             selection_transitions=reachable_selections,
+            product_coords=product_coords,
+            product_factors=self._product_factors,
         )
 
     # -- recursive construction ---------------------------------------------
@@ -258,6 +271,14 @@ class _Builder:
             self._transitions.append(remapped)
             if prod.is_selection(src, lbl, tgt):
                 self._selection_transitions.add(remapped)
+
+        # Propagate product metadata with remapped IDs
+        if prod.product_coords is not None:
+            self._product_coords = {
+                remap[sid]: coord
+                for sid, coord in prod.product_coords.items()
+            }
+            self._product_factors = prod.product_factors
 
         return remap[prod.top]
 

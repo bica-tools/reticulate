@@ -118,6 +118,31 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Check distributivity (Birkhoff classification)",
     )
+    parser.add_argument(
+        "--grid",
+        nargs="?",
+        const="grid_output",
+        default=None,
+        metavar="PATH",
+        help="Render 2D grid layout for binary parallel types (default: grid_output)",
+    )
+    parser.add_argument(
+        "--3d",
+        nargs="?",
+        const="product3d.html",
+        default=None,
+        dest="three_d",
+        metavar="PATH",
+        help="Render 3D interactive HTML for ternary parallel types (default: product3d.html)",
+    )
+    parser.add_argument(
+        "--factored",
+        nargs="?",
+        const="factored_output",
+        default=None,
+        metavar="PATH",
+        help="Render factored side-by-side view of parallel factors (default: factored_output)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -197,6 +222,66 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.lattice:
         _print_lattice(ast, ss, result)
+        return
+
+    # Product visualization modes (check before --dot so --factored --dot works)
+    if args.grid is not None:
+        from reticulate.product_viz import render_grid_hasse
+        try:
+            out = render_grid_hasse(
+                ss, args.grid, fmt=args.fmt, result=result,
+                title=args.title, labels=not args.no_labels,
+                edge_labels=not args.no_edge_labels,
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except ImportError:
+            print(
+                "Error: The 'graphviz' Python package is required for --grid.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"Rendered grid to {out}")
+        return
+
+    if args.three_d is not None:
+        from reticulate.product_viz import render_3d_product
+        try:
+            out = render_3d_product(
+                ss, args.three_d, title=args.title,
+                labels=not args.no_labels,
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Rendered 3D view to {out}")
+        return
+
+    if args.factored is not None:
+        from reticulate.product_viz import factored_dot_source, factored_dashboard
+        if args.fmt == "dot" or args.dot:
+            try:
+                print(factored_dot_source(
+                    ss, title=args.title,
+                    labels=not args.no_labels,
+                    edge_labels=not args.no_edge_labels,
+                ))
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            try:
+                out = factored_dashboard(
+                    ss, args.factored, title=args.title,
+                )
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            except (RuntimeError, FileNotFoundError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            print(f"Rendered factored view to {out}")
         return
 
     if args.dot:
