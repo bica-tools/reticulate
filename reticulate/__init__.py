@@ -6,6 +6,24 @@ termination, morphism, and visualize modules.
 
 __version__ = "0.1.0"
 
+from reticulate.category import (
+    CategoryResult,
+    DecompositionResult,
+    LatticeHomomorphism,
+    ProductResult,
+    check_product_universal_property,
+    check_sesslat_category,
+    compose,
+    find_product_decomposition,
+    find_projections,
+    identity_morphism,
+    is_lattice_homomorphism,
+    is_product,
+    is_subdirectly_irreducible,
+    make_homomorphism,
+    universal_morphism,
+    universal_morphism_nary,
+)
 from reticulate.coverage import (
     CoverageFrame,
     CoverageResult,
@@ -383,4 +401,20 @@ __all__ = [
     "grid_dot_source",
     "render_3d_product",
     "render_grid_hasse",
+    "CategoryResult",
+    "DecompositionResult",
+    "LatticeHomomorphism",
+    "ProductResult",
+    "check_product_universal_property",
+    "check_sesslat_category",
+    "compose",
+    "find_product_decomposition",
+    "find_projections",
+    "identity_morphism",
+    "is_lattice_homomorphism",
+    "is_product",
+    "is_subdirectly_irreducible",
+    "make_homomorphism",
+    "universal_morphism",
+    "universal_morphism_nary",
 ]
