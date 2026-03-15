@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "session2lattice"
+version = "0.1.0"
+description = "Session types as algebraic reticulates — lattice checker and toolchain"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Alexandre Zua Caldeira" },
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+viz = ["graphviz"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+session2lattice = "reticulate.cli:main"
+bica = "reticulate.cli:main"
+s2l = "reticulate.cli:main"
+sess2lat = "reticulate.cli:main"
+lattice-check = "reticulate.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["reticulate*"]
+
+[tool.setuptools.data-files]
+"share/man/man1" = ["man/reticulate.1"]
