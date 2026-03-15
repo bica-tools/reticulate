@@ -3,14 +3,14 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "session2lattice"
+name = "reticulate"
 version = "0.1.0"
 description = "Session types as algebraic reticulates — lattice checker and toolchain"
 readme = "README.md"
-license = "MIT"
-requires-python = ">=3.11"
+license = "Apache-2.0"
+requires-python = ">=3.12"
 authors = [
-    { name = "Alexandre Zua Caldeira" },
+    { name = "Alexandre Zua Caldeira", email = "zua@bica-tools.org" },
 ]
 
 dependencies = []
@@ -19,12 +19,13 @@ dependencies = []
 viz = ["graphviz"]
 dev = ["pytest>=8.0"]
 
+[project.urls]
+Homepage = "https://bica-tools.org"
+Repository = "https://github.com/bica-tools/reticulate"
+Releases = "https://github.com/bica-tools/reticulate/releases"
+
 [project.scripts]
-session2lattice = "reticulate.cli:main"
-bica = "reticulate.cli:main"
-s2l = "reticulate.cli:main"
-sess2lat = "reticulate.cli:main"
-lattice-check = "reticulate.cli:main"
+reticulate = "reticulate.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["reticulate*"]
