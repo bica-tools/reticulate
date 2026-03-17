@@ -67,7 +67,7 @@ from reticulate.parser import (
 )
 from reticulate.product import product_statespace
 from reticulate.sugar import desugar, ensugar
-from reticulate.statespace import StateSpace, build_statespace
+from reticulate.statespace import StateSpace, build_statespace, truncate_back_edges
 from reticulate.termination import (
     TerminationResult,
     WFParallelResult,
@@ -298,6 +298,7 @@ __all__ = [
     "Wait",
     "WFParallelResult",
     "build_statespace",
+    "truncate_back_edges",
     "check_distributive",
     "check_lattice",
     "check_termination",

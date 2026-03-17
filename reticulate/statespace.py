@@ -88,6 +88,222 @@ class StateSpace:
         ]
 
 
+def truncate_back_edges(ss: StateSpace) -> tuple[StateSpace, list[tuple[int, str, int]]]:
+    """Redirect back-edges to bottom, returning acyclic state space + back-edge list.
+
+    Uses SCC decomposition to identify cycles, then finds a feedback arc set
+    within each non-trivial SCC using a DFS spanning tree.  Back-edges are
+    transitions that close cycles (target is a DFS ancestor within the SCC).
+    Each such edge is redirected to point to ``ss.bottom`` instead.
+
+    The result is guaranteed to be acyclic (a DAG).
+
+    Returns:
+        A tuple of (truncated_statespace, back_edges) where back_edges is the
+        list of original (src, label, tgt) triples that were redirected.
+    """
+    # Step 1: Compute SCCs using iterative Tarjan's
+    sccs = _compute_sccs_list(ss)
+    state_to_scc: dict[int, int] = {}
+    for idx, scc in enumerate(sccs):
+        for s in scc:
+            state_to_scc[s] = idx
+
+    # Step 2: For each non-trivial SCC, find a feedback arc set via DFS
+    back_edges: list[tuple[int, str, int]] = []
+
+    # Build adjacency
+    adj: dict[int, list[tuple[str, int]]] = {s: [] for s in ss.states}
+    for src, lbl, tgt in ss.transitions:
+        adj[src].append((lbl, tgt))
+
+    for scc in sccs:
+        if len(scc) == 1:
+            # Check for self-loop
+            s = next(iter(scc))
+            for src, lbl, tgt in ss.transitions:
+                if src == s and tgt == s:
+                    back_edges.append((src, lbl, tgt))
+            continue
+
+        # Non-trivial SCC: DFS within the SCC to find back-edges
+        scc_set = set(scc)
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color: dict[int, int] = {s: WHITE for s in scc_set}
+
+        # Start from the state closest to top (minimum id as heuristic,
+        # or the entry point if identifiable)
+        start = min(scc_set)
+
+        stack: list[tuple[int, bool]] = [(start, False)]
+        while stack:
+            node, processed = stack.pop()
+            if processed:
+                color[node] = BLACK
+                continue
+            if color[node] != WHITE:
+                continue
+            color[node] = GRAY
+            stack.append((node, True))
+            for lbl, tgt in adj[node]:
+                if tgt not in scc_set:
+                    continue  # Skip inter-SCC edges
+                if color[tgt] == GRAY:
+                    back_edges.append((node, lbl, tgt))
+                elif color[tgt] == WHITE:
+                    stack.append((tgt, False))
+                # BLACK: cross-edge within SCC — also a feedback candidate
+                elif color[tgt] == BLACK:
+                    back_edges.append((node, lbl, tgt))
+
+    # Step 3: Iteratively remove back-edges until acyclic
+    # The DFS-based approach may not find all necessary edges in one pass
+    # (especially in product spaces).  Iterate until no cycles remain.
+    back_edge_set = set(back_edges)
+    remaining = [t for t in ss.transitions if t not in back_edge_set]
+
+    # Check if remaining is acyclic; if not, find more back-edges
+    for _ in range(10):  # bounded iterations
+        cycle_edges = _find_cycle_edges(ss.states, remaining, ss.top)
+        if not cycle_edges:
+            break
+        back_edges.extend(cycle_edges)
+        back_edge_set.update(cycle_edges)
+        remaining = [t for t in ss.transitions if t not in back_edge_set]
+
+    # Step 4: Build truncated transitions
+    new_transitions: list[tuple[int, str, int]] = []
+    new_selections: set[tuple[int, str, int]] = set()
+
+    for src, lbl, tgt in ss.transitions:
+        if (src, lbl, tgt) in back_edge_set:
+            redirected = (src, lbl, ss.bottom)
+            new_transitions.append(redirected)
+            if (src, lbl, tgt) in ss.selection_transitions:
+                new_selections.add(redirected)
+        else:
+            new_transitions.append((src, lbl, tgt))
+            if (src, lbl, tgt) in ss.selection_transitions:
+                new_selections.add((src, lbl, tgt))
+
+    # Step 5: Compute reachable states
+    reachable: set[int] = set()
+    visit_stack = [ss.top]
+    while visit_stack:
+        s = visit_stack.pop()
+        if s in reachable:
+            continue
+        reachable.add(s)
+        for src, _, tgt in new_transitions:
+            if src == s and tgt not in reachable:
+                visit_stack.append(tgt)
+
+    truncated = StateSpace(
+        states=reachable,
+        transitions=[(s, l, t) for s, l, t in new_transitions if s in reachable],
+        top=ss.top,
+        bottom=ss.bottom,
+        labels={s: v for s, v in ss.labels.items() if s in reachable},
+        selection_transitions={
+            (s, l, t) for s, l, t in new_selections if s in reachable
+        },
+        product_coords=(
+            {s: c for s, c in ss.product_coords.items() if s in reachable}
+            if ss.product_coords is not None
+            else None
+        ),
+        product_factors=ss.product_factors,
+    )
+    return truncated, back_edges
+
+
+def _compute_sccs_list(ss: StateSpace) -> list[set[int]]:
+    """Compute SCCs using iterative Tarjan's. Returns list of SCC sets."""
+    index_counter = [0]
+    stack: list[int] = []
+    on_stack: set[int] = set()
+    index: dict[int, int] = {}
+    lowlink: dict[int, int] = {}
+    sccs: list[set[int]] = []
+
+    adj: dict[int, list[int]] = {s: [] for s in ss.states}
+    for src, _, tgt in ss.transitions:
+        adj[src].append(tgt)
+
+    def strongconnect(v: int) -> None:
+        work_stack: list[tuple[int, int, bool]] = [(v, 0, False)]
+        while work_stack:
+            node, child_idx, returned = work_stack.pop()
+            if not returned and node not in index:
+                index[node] = lowlink[node] = index_counter[0]
+                index_counter[0] += 1
+                stack.append(node)
+                on_stack.add(node)
+            if returned:
+                child = adj[node][child_idx - 1]
+                lowlink[node] = min(lowlink[node], lowlink[child])
+
+            pushed = False
+            children = adj[node]
+            start = child_idx if not returned else child_idx
+            for i in range(start, len(children)):
+                w = children[i]
+                if w not in index:
+                    work_stack.append((node, i + 1, True))
+                    work_stack.append((w, 0, False))
+                    pushed = True
+                    break
+                elif w in on_stack:
+                    lowlink[node] = min(lowlink[node], index[w])
+
+            if not pushed and lowlink[node] == index[node]:
+                scc: set[int] = set()
+                while True:
+                    w = stack.pop()
+                    on_stack.discard(w)
+                    scc.add(w)
+                    if w == node:
+                        break
+                sccs.append(scc)
+
+    for s in ss.states:
+        if s not in index:
+            strongconnect(s)
+
+    return sccs
+
+
+def _find_cycle_edges(
+    states: set[int],
+    transitions: list[tuple[int, str, int]],
+    top: int,
+) -> list[tuple[int, str, int]]:
+    """Find edges that close cycles in the given transition list. Returns empty if acyclic."""
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[int, int] = {s: WHITE for s in states}
+    adj: dict[int, list[tuple[str, int]]] = {s: [] for s in states}
+    for src, lbl, tgt in transitions:
+        adj[src].append((lbl, tgt))
+
+    cycle_edges: list[tuple[int, str, int]] = []
+    stack: list[tuple[int, bool]] = [(top, False)]
+    while stack:
+        node, processed = stack.pop()
+        if processed:
+            color[node] = BLACK
+            continue
+        if color[node] != WHITE:
+            continue
+        color[node] = GRAY
+        stack.append((node, True))
+        for lbl, tgt in adj[node]:
+            if color.get(tgt) == GRAY:
+                cycle_edges.append((node, lbl, tgt))
+            elif color.get(tgt) == WHITE:
+                stack.append((tgt, False))
+    return cycle_edges
+
+
 def build_statespace(session_type: SessionType) -> StateSpace:
     """Construct the labeled transition system for a session type.
 
