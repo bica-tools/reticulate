@@ -74,6 +74,7 @@ from reticulate.termination import (
     check_termination,
     check_wf_parallel,
     is_terminating,
+    tau_complete,
 )
 from reticulate.testgen import (
     ClientProgram,
@@ -335,6 +336,7 @@ __all__ = [
     "is_order_preserving",
     "is_order_reflecting",
     "is_terminating",
+    "tau_complete",
     "parse",
     "pretty",
     "product_statespace",

@@ -90,6 +90,92 @@ def check_wf_parallel(session_type: SessionType) -> WFParallelResult:
     )
 
 
+def tau_complete(session_type: SessionType, tau_label: str = "tau") -> SessionType:
+    """Return *session_type* with a ``tau : end`` exit added to every
+    non-terminating recursive body.
+
+    The tau-exit is added as a branch arm (external choice, client-
+    controlled).  Recursions that already terminate are left unchanged.
+    The result is always terminating (and hence, by the Reticulate
+    Theorem, its state space is a bounded lattice).
+
+    Parameters:
+        session_type: The AST to tau-complete.
+        tau_label: The label for the exit arm (default ``"tau"``).
+
+    Returns:
+        A new AST where every non-terminating ``Rec`` body has been
+        augmented with ``tau_label : End``.
+    """
+    return _tau_complete(session_type, tau_label)
+
+
+# ---------------------------------------------------------------------------
+# Internal: tau-completion
+# ---------------------------------------------------------------------------
+
+def _tau_complete(node: SessionType, tau_label: str) -> SessionType:
+    """Recursively tau-complete an AST node."""
+    match node:
+        case End() | Wait() | Var():
+            return node
+        case Branch(choices=choices):
+            new_choices = tuple(
+                (label, _tau_complete(body, tau_label))
+                for label, body in choices
+            )
+            return Branch(new_choices)
+        case Select(choices=choices):
+            new_choices = tuple(
+                (label, _tau_complete(body, tau_label))
+                for label, body in choices
+            )
+            return Select(new_choices)
+        case Continuation(left=left, right=right):
+            return Continuation(
+                _tau_complete(left, tau_label),
+                _tau_complete(right, tau_label),
+            )
+        case Parallel(branches=branches):
+            return Parallel(tuple(
+                _tau_complete(b, tau_label) for b in branches
+            ))
+        case Rec(var=var, body=body):
+            new_body = _tau_complete(body, tau_label)
+            if _has_exit_path(new_body, var):
+                # Already terminating after completing children.
+                return Rec(var, new_body)
+            # Body is non-terminating: add tau exit.
+            new_body = _add_tau_arm(new_body, tau_label)
+            return Rec(var, new_body)
+        case _:
+            raise TypeError(f"unknown AST node: {type(node).__name__}")
+
+
+def _add_tau_arm(node: SessionType, tau_label: str) -> SessionType:
+    """Add a ``tau_label : End`` arm to the outermost choice in *node*.
+
+    If *node* is a Branch or Select, append the arm.
+    Otherwise, wrap *node* in a Branch with the original as one arm
+    and ``tau_label : End`` as the other.
+    """
+    match node:
+        case Branch(choices=choices):
+            # Check label collision.
+            existing = {label for label, _ in choices}
+            if tau_label in existing:
+                return node  # Already has a tau arm.
+            return Branch(choices + ((tau_label, End()),))
+        case Select(choices=choices):
+            existing = {label for label, _ in choices}
+            if tau_label in existing:
+                return node
+            return Select(choices + ((tau_label, End()),))
+        case _:
+            # Wrap in a branch: the original continues, tau exits.
+            return Branch((("_continue", node), (tau_label, End())))
+
+
 # ---------------------------------------------------------------------------
 # Internal: termination checking
 # ---------------------------------------------------------------------------

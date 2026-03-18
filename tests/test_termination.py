@@ -20,6 +20,7 @@ from reticulate.termination import (
     check_termination,
     check_wf_parallel,
     is_terminating,
+    tau_complete,
     _free_vars,
     _bound_vars,
     _contains_parallel,
@@ -401,3 +402,107 @@ class TestHelpers:
     def test_exit_path_wait(self) -> None:
         """Wait is a terminal node, so it has an exit path."""
         assert _has_exit_path(Wait(), "X") is True
+
+
+# ===================================================================
+# Tau-completion tests
+# ===================================================================
+
+class TestTauComplete:
+    """Tests for the tau_complete() function."""
+
+    def test_already_terminating_unchanged(self) -> None:
+        """A terminating type should not be modified."""
+        ast = parse("rec X . &{a: X, b: end}")
+        completed = tau_complete(ast)
+        assert is_terminating(completed)
+        # The original is already terminating, so no tau should be added.
+        from reticulate.parser import pretty
+        assert "tau" not in pretty(completed)
+
+    def test_simple_loop_gets_tau(self) -> None:
+        """rec X . &{a: X} should get a tau exit."""
+        ast = parse("rec X . &{a: X}")
+        assert not is_terminating(ast)
+        completed = tau_complete(ast)
+        assert is_terminating(completed)
+        from reticulate.parser import pretty
+        assert "tau" in pretty(completed)
+
+    def test_branch_with_non_terminating_arm(self) -> None:
+        """&{a: end, b: rec X . &{a: X}} — only the loop gets tau."""
+        ast = parse("&{a: end, b: rec X . &{a: X}}")
+        completed = tau_complete(ast)
+        assert is_terminating(completed)
+
+    def test_two_independent_loops(self) -> None:
+        """Both loops should get tau exits."""
+        ast = parse("&{a: rec X . &{a: X}, b: rec Y . &{b: Y}}")
+        completed = tau_complete(ast)
+        assert is_terminating(completed)
+
+    def test_nested_non_termination(self) -> None:
+        """Nested non-terminating loop should get tau."""
+        ast = parse("&{a: &{b: rec X . &{a: X}}, c: end}")
+        completed = tau_complete(ast)
+        assert is_terminating(completed)
+
+    def test_selection_loop_gets_tau(self) -> None:
+        """Selection loop +{a: rec X . +{a: X}} gets tau."""
+        ast = parse("+{a: rec X . +{a: X}, b: end}")
+        completed = tau_complete(ast)
+        assert is_terminating(completed)
+
+    def test_idempotent(self) -> None:
+        """tau_complete(tau_complete(S)) == tau_complete(S)."""
+        ast = parse("rec X . &{a: X}")
+        once = tau_complete(ast)
+        twice = tau_complete(once)
+        assert once == twice
+
+    def test_end_unchanged(self) -> None:
+        """end is already terminating."""
+        ast = parse("end")
+        assert tau_complete(ast) == ast
+
+    def test_custom_label(self) -> None:
+        """Custom tau label should work."""
+        ast = parse("rec X . &{a: X}")
+        completed = tau_complete(ast, tau_label="shutdown")
+        assert is_terminating(completed)
+        from reticulate.parser import pretty
+        assert "shutdown" in pretty(completed)
+
+    def test_tau_complete_yields_lattice(self) -> None:
+        """The simplest counterexample should become a lattice."""
+        from reticulate.statespace import build_statespace
+        from reticulate.lattice import check_lattice
+
+        ast = parse("&{a: end, b: rec X . &{a: X}}")
+        completed = tau_complete(ast)
+        ss = build_statespace(completed)
+        result = check_lattice(ss)
+        assert result.is_lattice
+
+    def test_all_162_counterexamples_become_lattices(self) -> None:
+        """Every counterexample from Step 6 becomes a lattice after
+        tau-completion."""
+        from reticulate.statespace import build_statespace
+        from reticulate.lattice import check_lattice
+        from reticulate.enumerate_types import check_universality, EnumerationConfig
+
+        cfg = EnumerationConfig(
+            max_depth=3, labels=("a", "b"), max_branch_width=2,
+            include_selection=False, include_parallel=False,
+            require_terminating=False,
+        )
+        r = check_universality(cfg)
+        assert len(r.counterexamples) == 162
+
+        for type_str, _ in r.counterexamples:
+            ast = parse(type_str)
+            completed = tau_complete(ast)
+            assert is_terminating(completed), f"Still non-terminating: {type_str}"
+            ss = build_statespace(completed)
+            lr = check_lattice(ss)
+            assert lr.is_lattice, f"Not lattice after tau: {type_str}"
