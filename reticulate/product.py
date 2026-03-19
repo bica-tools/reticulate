@@ -7,6 +7,9 @@ Given two state spaces L₁ and L₂, constructs the product poset L₁ × L₂:
 Transitions from (s₁, s₂) include all transitions from s₁ (advancing the
 left component) and all transitions from s₂ (advancing the right component).
 
+Also provides ``power_statespace(ss, n)`` to compute S^n = S ∥ S ∥ ... ∥ S
+(n parallel copies), and ``power_type(type_str, n)`` for AST-level power.
+
 See docs/specs/parallel-constructor-spec.md Section 4.2.
 """
 
@@ -105,3 +108,103 @@ def product_statespace(left: StateSpace, right: StateSpace) -> StateSpace:
         product_coords=coord_map,
         product_factors=factors,
     )
+
+
+def power_statespace(ss: StateSpace, n: int) -> StateSpace:
+    """Compute S^n: the n-fold product of a state space with itself.
+
+    ``power_statespace(ss, n)`` = ss × ss × ... × ss (n copies).
+
+    Properties:
+    - |S^n| = |S|^n states
+    - S^1 = S (identity)
+    - S^0 = trivial 1-state lattice (top = bottom = end)
+    - S^(m+n) ≅ S^m × S^n (additive exponent)
+
+    Parameters:
+        ss: The base state space.
+        n: The exponent (number of parallel copies). Must be ≥ 0.
+
+    Returns:
+        The n-fold product state space.
+
+    Raises:
+        ValueError: If n < 0.
+    """
+    if n < 0:
+        raise ValueError(f"Exponent must be non-negative, got {n}")
+
+    if n == 0:
+        from reticulate.statespace import StateSpace as SS
+        return SS(
+            states={0},
+            transitions=[],
+            top=0,
+            bottom=0,
+            labels={0: "end"},
+            selection_transitions=set(),
+        )
+
+    if n == 1:
+        return ss
+
+    from functools import reduce
+    return reduce(product_statespace, [ss] * n)
+
+
+def power_type(type_str: str, n: int) -> str:
+    """Construct the session type string for S^n (n parallel copies).
+
+    Returns the type string with label disambiguation:
+    each copy's labels are suffixed with the copy number
+    to satisfy the WF-Par disjointness condition.
+
+    Parameters:
+        type_str: The base session type string.
+        n: The exponent (number of copies). Must be ≥ 1.
+
+    Returns:
+        A session type string for n parallel copies with unique labels.
+
+    Raises:
+        ValueError: If n < 1.
+    """
+    if n < 1:
+        raise ValueError(f"Exponent must be ≥ 1 for type construction, got {n}")
+    if n == 1:
+        return type_str
+
+    from reticulate.parser import parse, pretty
+    from reticulate.parser import (
+        Branch, Select, Rec, Var, End, Wait, Parallel, Continuation,
+    )
+
+    base = parse(type_str)
+
+    def relabel(node: object, suffix: str) -> object:
+        """Recursively append suffix to all method/label names."""
+        if isinstance(node, End) or isinstance(node, Wait):
+            return node
+        if isinstance(node, Var):
+            return Var(node.name + suffix)
+        if isinstance(node, Branch):
+            return Branch(tuple(
+                (m + suffix, relabel(s, suffix))
+                for m, s in node.choices
+            ))
+        if isinstance(node, Select):
+            return Select(tuple(
+                (l + suffix, relabel(s, suffix))
+                for l, s in node.choices
+            ))
+        if isinstance(node, Rec):
+            return Rec(node.var + suffix, relabel(node.body, suffix))
+        if isinstance(node, Parallel):
+            return Parallel(tuple(relabel(b, suffix) for b in node.branches))
+        if isinstance(node, Continuation):
+            return Continuation(relabel(node.left, suffix), relabel(node.right, suffix))
+        return node  # pragma: no cover
+
+    copies = [relabel(base, f"_{i+1}") for i in range(n)]
+    par = Parallel(tuple(copies))
+    return pretty(par)
