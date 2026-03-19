@@ -386,6 +386,15 @@ def main(argv: list[str] | None = None) -> None:
         help="Which role the human plays (default: both)",
     )
     parser.add_argument(
+        "--visual", "-v",
+        action="store_true",
+        help="Open interactive visual board in the browser",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        help="Output path for visual board HTML (used with --visual)",
+    )
+    parser.add_argument(
         "--list-benchmarks", "-l",
         action="store_true",
         help="List available benchmark protocols",
@@ -423,6 +432,20 @@ def main(argv: list[str] | None = None) -> None:
         # Default: a fun introductory type
         type_string = "&{open: rec X . &{read: +{data: X, eof: &{close: end}}}}"
         print(f"  {DIM}No type specified — using File Object protocol.{RESET}")
+
+    if args.visual:
+        from reticulate.parser import parse as _parse
+        from reticulate.statespace import build_statespace as _build
+        from reticulate.game.visual_board import open_visual_board
+
+        ast = _parse(type_string)
+        ss = _build(ast)
+        path = open_visual_board(
+            ss, title="Protocol Duel", mode=args.mode,
+            human_role=args.role, output_path=args.output,
+        )
+        print(f"  Visual board opened: {path}")
+        return
 
     play_game(type_string, mode=args.mode, human_role=args.role)
 
