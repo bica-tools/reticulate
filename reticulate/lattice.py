@@ -54,6 +54,19 @@ class LatticeResult:
     counterexample: tuple[int, int, str] | None
     scc_map: dict[int, int]
 
+    @property
+    def scc_groups(self) -> dict[int, frozenset[int]]:
+        """Multi-state SCC groups: representative → member states.
+
+        Only includes SCCs with 2+ members (from recursive cycles).
+        Single-state SCCs (including self-loops) are excluded.
+        """
+        groups: dict[int, set[int]] = {}
+        for state, rep in self.scc_map.items():
+            groups.setdefault(rep, set()).add(state)
+        return {rep: frozenset(members) for rep, members in groups.items()
+                if len(members) > 1}
+
 
 # ---------------------------------------------------------------------------
 # Public API

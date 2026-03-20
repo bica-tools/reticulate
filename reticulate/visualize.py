@@ -39,6 +39,7 @@ def dot_source(
     edge_labels: bool = True,
     coverage: CoverageResult | None = None,
     node_style: str = "default",
+    scc_clusters: bool = False,
 ) -> str:
     """Return DOT source string for the Hasse diagram of *ss*.
 
@@ -48,10 +49,13 @@ def dot_source(
         node_style: ``"default"`` for labelled boxes, ``"constructor"`` for
             circles showing session type constructor symbols
             (``&``, ``⊕``, ``∥``, ``end``).
+        scc_clusters: When True and *result* is provided, multi-state SCCs
+            (from recursive types) are drawn as shaded cluster subgraphs
+            with intra-SCC back-edges shown as dashed purple lines.
     """
     return _build_dot(ss, result, title=title, labels=labels,
                       edge_labels=edge_labels, coverage=coverage,
-                      node_style=node_style)
+                      node_style=node_style, scc_clusters=scc_clusters)
 
 
 def hasse_diagram(
@@ -63,6 +67,7 @@ def hasse_diagram(
     edge_labels: bool = True,
     coverage: CoverageResult | None = None,
     node_style: str = "default",
+    scc_clusters: bool = False,
 ) -> "graphviz.Digraph":  # type: ignore[name-defined]
     """Build a Graphviz ``Digraph`` for the Hasse diagram of *ss*.
 
@@ -80,7 +85,7 @@ def hasse_diagram(
 
     src = _build_dot(ss, result, title=title, labels=labels,
                      edge_labels=edge_labels, coverage=coverage,
-                     node_style=node_style)
+                     node_style=node_style, scc_clusters=scc_clusters)
     return graphviz.Source(src)
 
 
@@ -95,6 +100,7 @@ def render_hasse(
     edge_labels: bool = True,
     coverage: CoverageResult | None = None,
     node_style: str = "default",
+    scc_clusters: bool = False,
 ) -> str:
     """Render Hasse diagram to file.  Returns the output file path."""
     try:
@@ -107,7 +113,7 @@ def render_hasse(
 
     src = _build_dot(ss, result, title=title, labels=labels,
                      edge_labels=edge_labels, coverage=coverage,
-                     node_style=node_style)
+                     node_style=node_style, scc_clusters=scc_clusters)
     g = graphviz.Source(src)
     return g.render(filename=path, format=fmt, cleanup=True)
 
@@ -136,6 +142,7 @@ def _build_dot(
     edge_labels: bool,
     coverage: CoverageResult | None = None,
     node_style: str = "default",
+    scc_clusters: bool = False,
 ) -> str:
     lines: list[str] = []
     lines.append("digraph {")
@@ -158,10 +165,22 @@ def _build_dot(
         counter_states.add(result.counterexample[0])
         counter_states.add(result.counterexample[1])
 
+    # Compute SCC cluster info if requested
+    scc_groups: dict[int, frozenset[int]] = {}
+    clustered_states: dict[int, int] = {}  # state → SCC representative
+    if scc_clusters and result is not None:
+        scc_groups = result.scc_groups
+        for rep, members in scc_groups.items():
+            for s in members:
+                clustered_states[s] = rep
+
     if result is not None:
-        _build_dot_with_result(ss, result, lines, labels, edge_labels, counter_states, coverage, node_style)
+        _build_dot_with_result(ss, result, lines, labels, edge_labels,
+                               counter_states, coverage, node_style,
+                               scc_groups, clustered_states)
     else:
-        _build_dot_plain(ss, lines, labels, edge_labels, coverage, node_style)
+        _build_dot_plain(ss, lines, labels, edge_labels, coverage,
+                         node_style, scc_groups, clustered_states)
 
     # Pin top and bottom to the top and bottom of the layout
     lines.append(f'    {{rank=source; {ss.top}}}')
@@ -178,27 +197,18 @@ def _build_dot_plain(
     edge_labels: bool,
     coverage: CoverageResult | None = None,
     node_style: str = "default",
+    scc_groups: dict[int, frozenset[int]] | None = None,
+    clustered_states: dict[int, int] | None = None,
 ) -> None:
     """Add nodes/edges without SCC collapsing."""
-    for sid in sorted(ss.states):
-        if node_style == "constructor":
-            attrs = _node_attrs_constructor(ss, sid)
-        else:
-            node_label = _node_label(ss, sid, labels)
-            attrs = _node_attrs(ss, sid, node_label)
-        if coverage is not None and sid in coverage.uncovered_states and sid not in (ss.top, ss.bottom):
-            attrs["fillcolor"] = "#fee2e2"
-        lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
+    if scc_groups is None:
+        scc_groups = {}
+    if clustered_states is None:
+        clustered_states = {}
 
-    for src, lbl, tgt in ss.transitions:
-        edge_attrs: dict[str, str] = {}
-        if edge_labels:
-            edge_attrs["label"] = lbl
-        # In constructor mode, mark selection edges as dashed
-        if node_style == "constructor" and ss.is_selection(src, lbl, tgt):
-            edge_attrs["style"] = "dashed"
-        _apply_coverage_edge_attrs(edge_attrs, coverage, src, lbl, tgt)
-        lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
+    _emit_nodes(ss, lines, labels, coverage, node_style, scc_groups,
+                clustered_states, counter_states=set())
+    _emit_edges(ss, lines, edge_labels, coverage, node_style, clustered_states)
 
 
 def _build_dot_with_result(
@@ -210,32 +220,100 @@ def _build_dot_with_result(
     counter_states: set[int],
     coverage: CoverageResult | None = None,
     node_style: str = "default",
+    scc_groups: dict[int, frozenset[int]] | None = None,
+    clustered_states: dict[int, int] | None = None,
 ) -> None:
     """Add all nodes/edges with counterexample highlighting."""
-    for sid in sorted(ss.states):
+    if scc_groups is None:
+        scc_groups = {}
+    if clustered_states is None:
+        clustered_states = {}
+
+    _emit_nodes(ss, lines, labels, coverage, node_style, scc_groups,
+                clustered_states, counter_states)
+    _emit_edges(ss, lines, edge_labels, coverage, node_style, clustered_states)
+
+
+# ---------------------------------------------------------------------------
+# Internal: node and edge emission (with optional SCC clusters)
+# ---------------------------------------------------------------------------
+
+def _emit_nodes(
+    ss: StateSpace,
+    lines: list[str],
+    labels: bool,
+    coverage: CoverageResult | None,
+    node_style: str,
+    scc_groups: dict[int, frozenset[int]],
+    clustered_states: dict[int, int],
+    counter_states: set[int],
+) -> None:
+    """Emit DOT node declarations, optionally wrapping SCC members in clusters."""
+
+    def _node_decl(sid: int, indent: str = "    ") -> str:
         if node_style == "constructor":
             attrs = _node_attrs_constructor(ss, sid)
         else:
             node_label = _node_label(ss, sid, labels)
             attrs = _node_attrs(ss, sid, node_label)
-
-        # Counterexample highlight
         if sid in counter_states:
             attrs["color"] = "red"
             attrs["penwidth"] = "2"
-
         if coverage is not None and sid in coverage.uncovered_states and sid not in (ss.top, ss.bottom):
             attrs["fillcolor"] = "#fee2e2"
+        return f'{indent}{sid} [{_fmt_attrs(attrs)}];'
 
-        lines.append(f'    {sid} [{_fmt_attrs(attrs)}];')
+    # Emit SCC cluster subgraphs
+    emitted: set[int] = set()
+    for idx, (rep, members) in enumerate(sorted(scc_groups.items())):
+        n = len(members)
+        lines.append(f'    subgraph cluster_scc{idx} {{')
+        lines.append(f'        label="SCC ({n} states, cyclic-equivalent)";')
+        lines.append('        style=filled;')
+        lines.append('        color="#e9d5ff";')
+        lines.append('        fillcolor="#f5f3ff";')
+        lines.append('        fontname="Helvetica";')
+        lines.append('        fontsize=10;')
+        for sid in sorted(members):
+            lines.append(_node_decl(sid, indent="        "))
+            emitted.add(sid)
+        lines.append('    }')
 
+    # Emit remaining nodes outside clusters
+    for sid in sorted(ss.states):
+        if sid not in emitted:
+            lines.append(_node_decl(sid))
+
+
+def _emit_edges(
+    ss: StateSpace,
+    lines: list[str],
+    edge_labels: bool,
+    coverage: CoverageResult | None,
+    node_style: str,
+    clustered_states: dict[int, int],
+) -> None:
+    """Emit DOT edge declarations, styling intra-SCC edges as dashed."""
     for src, lbl, tgt in ss.transitions:
         edge_attrs: dict[str, str] = {}
         if edge_labels:
             edge_attrs["label"] = lbl
+
+        # Intra-SCC back-edge: dashed purple
+        if (clustered_states
+                and src in clustered_states
+                and tgt in clustered_states
+                and clustered_states[src] == clustered_states[tgt]):
+            # Check if this is a back-edge (tgt has lower or equal ID, heuristic)
+            # In session type state spaces, back-edges go from higher to lower IDs
+            if tgt <= src:
+                edge_attrs["style"] = "dashed"
+                edge_attrs["color"] = "#7c3aed"
+
         # In constructor mode, mark selection edges as dashed
         if node_style == "constructor" and ss.is_selection(src, lbl, tgt):
             edge_attrs["style"] = "dashed"
+
         _apply_coverage_edge_attrs(edge_attrs, coverage, src, lbl, tgt)
         lines.append(f'    {src} -> {tgt}{_fmt_edge_attrs(edge_attrs)};')
 

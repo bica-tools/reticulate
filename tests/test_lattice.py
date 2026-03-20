@@ -414,6 +414,29 @@ class TestSCCMap:
         r = check_lattice(ss)
         assert r.scc_map[ss.bottom] == ss.bottom
 
+    def test_scc_groups_empty_for_acyclic(self) -> None:
+        """Acyclic types have no multi-state SCCs."""
+        r = _check("&{a: end}")
+        assert r.scc_groups == {}
+
+    def test_scc_groups_self_loop_excluded(self) -> None:
+        """Self-loops (1-state SCCs) are excluded from scc_groups."""
+        r = _check("rec X . &{next: X, done: end}")
+        assert r.scc_groups == {}
+
+    def test_scc_groups_two_state_cycle(self) -> None:
+        """Two-state cycle appears in scc_groups."""
+        ss = _ss("rec X . &{a: &{b: X}, done: end}")
+        r = check_lattice(ss)
+        assert len(r.scc_groups) == 1
+        group = next(iter(r.scc_groups.values()))
+        assert len(group) == 2
+        # Both top and after_a should be in the group
+        tr = {l: t for s, l, t in ss.transitions if s == ss.top}
+        after_a = tr["a"]
+        assert ss.top in group
+        assert after_a in group
+
 
 # ===================================================================
 # Full spec example

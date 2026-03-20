@@ -321,3 +321,100 @@ class TestRenderHasse:
                 assert out.endswith(".svg")
             except Exception:
                 pytest.skip("graphviz dot binary not available")
+
+
+# ---------------------------------------------------------------------------
+# SCC cluster visualization tests
+# ---------------------------------------------------------------------------
+
+class TestSCCClusters:
+    """Tests for SCC cluster subgraph rendering."""
+
+    def test_no_clusters_without_flag(self) -> None:
+        """Without scc_clusters=True, no cluster subgraphs appear."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result)
+        assert "subgraph cluster_" not in src
+
+    def test_no_clusters_without_result(self) -> None:
+        """Without a LatticeResult, scc_clusters has no effect."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        src = dot_source(ss, scc_clusters=True)
+        assert "subgraph cluster_" not in src
+
+    def test_no_clusters_for_acyclic(self) -> None:
+        """Acyclic types have no multi-state SCCs — no clusters."""
+        ss = build_statespace(parse("&{a: end, b: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result, scc_clusters=True)
+        assert "subgraph cluster_" not in src
+
+    def test_no_clusters_for_self_loop(self) -> None:
+        """Self-loop (1-state SCC) should not create a cluster."""
+        ss = build_statespace(parse("rec X . &{next: X, done: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result, scc_clusters=True)
+        assert "subgraph cluster_" not in src
+
+    def test_cluster_for_two_state_cycle(self) -> None:
+        """Two-state cycle should create a cluster subgraph."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result, scc_clusters=True)
+        assert "subgraph cluster_scc0" in src
+        assert "2 states" in src
+        assert "cyclic-equivalent" in src
+        assert "#f5f3ff" in src  # cluster fill color
+
+    def test_intra_scc_back_edge_dashed(self) -> None:
+        """Back-edges within an SCC should be dashed purple."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result, scc_clusters=True)
+        # The back-edge b goes from after_a back to top
+        assert "#7c3aed" in src  # purple color on back-edge
+
+    def test_inter_scc_edges_not_purple(self) -> None:
+        """Edges between different SCCs should not be purple."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result, scc_clusters=True)
+        # The "done" edge goes from top SCC to end SCC — should not be purple
+        for line in src.splitlines():
+            if "done" in line and "->" in line:
+                assert "#7c3aed" not in line
+
+    def test_all_nodes_preserved(self) -> None:
+        """Enabling scc_clusters should not change the number of nodes."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src_plain = dot_source(ss, result)
+        src_clustered = dot_source(ss, result, scc_clusters=True)
+
+        def count_nodes(src: str) -> int:
+            return sum(1 for l in src.splitlines()
+                       if "[" in l and "label=" in l and "->" not in l
+                       and "subgraph" not in l)
+
+        assert count_nodes(src_plain) == count_nodes(src_clustered)
+
+    def test_all_edges_preserved(self) -> None:
+        """Enabling scc_clusters should not change the number of edges."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src_plain = dot_source(ss, result)
+        src_clustered = dot_source(ss, result, scc_clusters=True)
+
+        def count_edges(src: str) -> int:
+            return sum(1 for l in src.splitlines() if "->" in l and "rank" not in l)
+
+        assert count_edges(src_plain) == count_edges(src_clustered)
+
+    def test_cluster_with_constructor_style(self) -> None:
+        """SCC clusters work with node_style='constructor'."""
+        ss = build_statespace(parse("rec X . &{a: &{b: X}, done: end}"))
+        result = check_lattice(ss)
+        src = dot_source(ss, result, scc_clusters=True, node_style="constructor")
+        assert "subgraph cluster_scc0" in src
+        assert "shape=circle" in src
