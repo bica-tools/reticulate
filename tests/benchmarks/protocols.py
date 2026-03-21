@@ -1571,4 +1571,164 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=2,
         uses_parallel=False,
     ),
+    # ─── GoF Design Pattern Benchmarks (84–94) — Step 51 ──────
+    # 84. GoF Observer
+    BenchmarkProtocol(
+        name="GoF Observer",
+        type_string="rec X . &{subscribe: X, notify: +{update: X, unsubscribe: end}}",
+        description=(
+            "Observer pattern: subject maintains a subscription loop; on notify, "
+            "the server selects update (continue observing) or unsubscribe (end). "
+            "Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=4,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 85. GoF State
+    BenchmarkProtocol(
+        name="GoF State",
+        type_string=(
+            "&{request: +{idle: rec X . &{request: +{idle: X, active: end}}, "
+            "active: end}}"
+        ),
+        description=(
+            "State pattern: client sends request, server transitions between "
+            "idle (recursive) and active (terminal) states. The selection models "
+            "internal state change. Step 51 GoF benchmark."
+        ),
+        expected_states=5,
+        expected_transitions=6,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 86. GoF Strategy
+    BenchmarkProtocol(
+        name="GoF Strategy",
+        type_string="+{strategyA: &{execute: end}, strategyB: &{execute: end}}",
+        description=(
+            "Strategy pattern: server selects an algorithm (strategyA or "
+            "strategyB), then client calls execute. The selection models "
+            "the runtime algorithm choice. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 87. GoF Command
+    BenchmarkProtocol(
+        name="GoF Command",
+        type_string="&{execute: +{OK: end, UNDO: &{undo: end}}}",
+        description=(
+            "Command pattern: client executes a command, server selects OK "
+            "(done) or UNDO (client must call undo). Models the execute/undo "
+            "protocol of the Command pattern. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 88. GoF Chain of Responsibility
+    BenchmarkProtocol(
+        name="GoF Chain of Responsibility",
+        type_string="rec X . &{handle: +{handled: end, pass: X}}",
+        description=(
+            "Chain of Responsibility pattern: client sends handle request, "
+            "server either handles it (end) or passes to the next handler "
+            "(recurse). Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=3,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 89. GoF Template Method
+    BenchmarkProtocol(
+        name="GoF Template Method",
+        type_string=(
+            "&{step1: &{step2: +{hookA: &{step3: end}, hookB: &{step3: end}}}}"
+        ),
+        description=(
+            "Template Method pattern: fixed algorithm skeleton (step1, step2, "
+            "step3) with a hook point where the server selects the variant "
+            "(hookA or hookB). Step 51 GoF benchmark."
+        ),
+        expected_states=6,
+        expected_transitions=6,
+        expected_sccs=6,
+        uses_parallel=False,
+    ),
+    # 90. GoF Visitor
+    BenchmarkProtocol(
+        name="GoF Visitor",
+        type_string="&{accept: +{visitA: end, visitB: end, visitC: end}}",
+        description=(
+            "Visitor pattern: client calls accept, then the element dispatches "
+            "to the appropriate visit method (visitA, visitB, or visitC) via "
+            "selection. Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=4,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # 91. GoF Composite
+    BenchmarkProtocol(
+        name="GoF Composite",
+        type_string="rec X . &{add: X, remove: X, operation: end}",
+        description=(
+            "Composite pattern: client can add children, remove children "
+            "(both recurse), or call operation (leaf behavior, end). "
+            "Step 51 GoF benchmark."
+        ),
+        expected_states=2,
+        expected_transitions=3,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 92. GoF Decorator
+    BenchmarkProtocol(
+        name="GoF Decorator",
+        type_string="&{extra: &{base: end}}",
+        description=(
+            "Decorator pattern: client calls the extra (decorated) method, "
+            "then the base method. The decorator wraps the base protocol "
+            "with additional behavior. Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=2,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # 93. GoF Factory Method
+    BenchmarkProtocol(
+        name="GoF Factory Method",
+        type_string="+{createA: &{use: end}, createB: &{use: end}}",
+        description=(
+            "Factory Method pattern: server selects which product to create "
+            "(createA or createB), then client uses the product. The selection "
+            "models the factory's product decision. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 94. GoF Builder
+    BenchmarkProtocol(
+        name="GoF Builder",
+        type_string="&{setA: &{setB: &{build: end}}}",
+        description=(
+            "Builder pattern: client sequentially sets configuration (setA, "
+            "setB) then calls build. The linear protocol models the builder's "
+            "step-by-step construction. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=3,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
 ]
