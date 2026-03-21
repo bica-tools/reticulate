@@ -1508,4 +1508,67 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=10,
         uses_parallel=False,
     ),
+    # ─── Dialogue Types (Step 18) ───────────────────────────────
+    # 80. Socratic Questioning
+    BenchmarkProtocol(
+        name="Socratic Questioning",
+        type_string="rec X . &{question: +{answer: X, aporia: end}}",
+        description=(
+            "Lorenzen-style Socratic dialogue: Opponent repeatedly questions, "
+            "Proponent answers (continuing) or reaches aporia (terminating). "
+            "Step 18 dialogue benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=3,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 81. Mathematical Proof Dialogue
+    BenchmarkProtocol(
+        name="Mathematical Proof Dialogue",
+        type_string=(
+            "&{conjecture: +{prove: rec X . &{challenge: "
+            "+{justify: X, qed: end}}, abandon: end}}"
+        ),
+        description=(
+            "Dialogue for mathematical proof: Opponent poses conjecture, "
+            "Proponent proves (iterative challenge-justify loop) or abandons. "
+            "Step 18 dialogue benchmark."
+        ),
+        expected_states=5,
+        expected_transitions=6,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 82. Legal Cross-Examination
+    BenchmarkProtocol(
+        name="Legal Cross-Examination",
+        type_string=(
+            "rec X . &{examine: +{answer: &{followup: X, accept: end}, "
+            "refuse: end, object: end}}"
+        ),
+        description=(
+            "Legal cross-examination: examiner questions, witness answers "
+            "(with follow-up or acceptance), refuses, or objects. "
+            "Step 18 dialogue benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=6,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 83. AI Agent Negotiation
+    BenchmarkProtocol(
+        name="AI Agent Negotiation",
+        type_string="rec X . &{propose: +{accept: end, counter: X, reject: end}}",
+        description=(
+            "MCP/A2A-style agent negotiation: proposer offers, responder "
+            "accepts, rejects, or counter-proposes (looping). "
+            "Step 18 dialogue benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=4,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
 ]
