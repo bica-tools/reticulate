@@ -1731,4 +1731,156 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=4,
         uses_parallel=False,
     ),
+    # 95. GoF Adapter
+    BenchmarkProtocol(
+        name="GoF Adapter",
+        type_string="&{request: &{specificRequest: end}}",
+        description=(
+            "Adapter pattern: client calls request, adapter delegates to "
+            "specificRequest on the adaptee. The wrapper is a sequential "
+            "session type. Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=2,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # 96. GoF Bridge
+    BenchmarkProtocol(
+        name="GoF Bridge",
+        type_string="+{implA: &{operation: end}, implB: &{operation: end}}",
+        description=(
+            "Bridge pattern: abstraction selects implementation (implA or "
+            "implB) via internal choice, then client calls operation. "
+            "Decouples abstraction from implementation. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 97. GoF Facade
+    BenchmarkProtocol(
+        name="GoF Facade",
+        type_string="&{simplifiedOp: end}",
+        description=(
+            "Facade pattern: single simplified entry point hiding a complex "
+            "subsystem. The simplest possible session type (one method). "
+            "Step 51 GoF benchmark."
+        ),
+        expected_states=2,
+        expected_transitions=1,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 98. GoF Flyweight
+    BenchmarkProtocol(
+        name="GoF Flyweight",
+        type_string="&{getFlyweight: +{cached: &{draw: end}, created: &{draw: end}}}",
+        description=(
+            "Flyweight pattern: client requests flyweight, server returns "
+            "either a cached or newly created instance, then client draws. "
+            "The selection models the caching decision. Step 51 GoF benchmark."
+        ),
+        expected_states=5,
+        expected_transitions=5,
+        expected_sccs=5,
+        uses_parallel=False,
+    ),
+    # 99. GoF Proxy
+    BenchmarkProtocol(
+        name="GoF Proxy",
+        type_string="&{request: +{allowed: &{realRequest: end}, denied: end}}",
+        description=(
+            "Proxy pattern: client requests, proxy checks access and either "
+            "forwards to real subject (allowed) or denies. The selection "
+            "models the access control decision. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 100. GoF Abstract Factory
+    BenchmarkProtocol(
+        name="GoF Abstract Factory",
+        type_string="+{familyA: &{createProduct: end}, familyB: &{createProduct: end}}",
+        description=(
+            "Abstract Factory pattern: server selects product family (familyA "
+            "or familyB), then client creates a product. The selection models "
+            "the factory family decision. Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=4,
+        uses_parallel=False,
+    ),
+    # 101. GoF Prototype
+    BenchmarkProtocol(
+        name="GoF Prototype",
+        type_string="&{clone: +{shallow: end, deep: end}}",
+        description=(
+            "Prototype pattern: client clones the prototype, server selects "
+            "shallow or deep copy. Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=3,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # 102. GoF Singleton
+    BenchmarkProtocol(
+        name="GoF Singleton",
+        type_string="&{getInstance: &{use: end}}",
+        description=(
+            "Singleton pattern: client gets the single instance, then uses "
+            "it. Sequential two-step protocol. Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=2,
+        expected_sccs=3,
+        uses_parallel=False,
+    ),
+    # 103. GoF Interpreter
+    BenchmarkProtocol(
+        name="GoF Interpreter",
+        type_string="rec X . &{interpret: +{terminal: end, nonterminal: X}}",
+        description=(
+            "Interpreter pattern: client interprets an expression; server "
+            "selects terminal (end) or nonterminal (recurse into sub-expression). "
+            "Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=3,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 104. GoF Mediator
+    BenchmarkProtocol(
+        name="GoF Mediator",
+        type_string="rec X . &{notify: +{forward: X, resolved: end}}",
+        description=(
+            "Mediator pattern: colleague notifies mediator, mediator either "
+            "forwards to another colleague (recurse) or resolves the "
+            "interaction (end). Step 51 GoF benchmark."
+        ),
+        expected_states=3,
+        expected_transitions=3,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
+    # 105. GoF Memento
+    BenchmarkProtocol(
+        name="GoF Memento",
+        type_string="rec X . &{save: &{doWork: +{restore: X, commit: end}}}",
+        description=(
+            "Memento pattern: save state, do work, then either restore "
+            "(rollback to saved state, recurse) or commit (finalize). "
+            "Step 51 GoF benchmark."
+        ),
+        expected_states=4,
+        expected_transitions=4,
+        expected_sccs=2,
+        uses_parallel=False,
+    ),
 ]
