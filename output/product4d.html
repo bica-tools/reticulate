@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html><head><meta charset='utf-8'><title>4D Product Lattice</title>
+<style>body{margin:0;overflow:hidden;font-family:sans-serif}
+#info{position:absolute;top:10px;left:10px;color:#333;background:rgba(255,255,255,0.9);padding:10px;border-radius:6px;font-size:13px}
+#tooltip{position:absolute;display:none;background:rgba(0,0,0,0.8);color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;pointer-events:none}
+</style></head><body>
+<div id="info"><b>4D Product Lattice</b><br>
+81 states, 216 transitions<br>
+X: Factor 1 (3 states)<br>
+Y: Factor 2 (3 states)<br>
+Z: Factor 3 (3 states)
+<br>Color: Factor 4 (3 states)
+</div>
+<div id="tooltip"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from "three";
+import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+const nodes = [{id:0,x:2,y:2,z:2,label:"end",color:"#16a34a"},{id:1,x:2,y:2,z:2,label:"(((end, end), end), d0)",color:"#f97316"},{id:2,x:2,y:2,z:2,label:"(((end, end), end), d1)",color:"#ba5681"},{id:3,x:2,y:2,z:0,label:"(((end, end), c0), end)",color:"#7c3aed"},{id:4,x:2,y:2,z:0,label:"(((end, end), c0), d0)",color:"#f97316"},{id:5,x:2,y:2,z:0,label:"(((end, end), c0), d1)",color:"#ba5681"},{id:6,x:2,y:2,z:1,label:"(((end, end), c1), end)",color:"#7c3aed"},{id:7,x:2,y:2,z:1,label:"(((end, end), c1), d0)",color:"#f97316"},{id:8,x:2,y:2,z:1,label:"(((end, end), c1), d1)",color:"#ba5681"},{id:9,x:2,y:0,z:2,label:"(((end, b0), end), end)",color:"#7c3aed"},{id:10,x:2,y:0,z:2,label:"(((end, b0), end), d0)",color:"#f97316"},{id:11,x:2,y:0,z:2,label:"(((end, b0), end), d1)",color:"#ba5681"},{id:12,x:2,y:0,z:0,label:"(((end, b0), c0), end)",color:"#7c3aed"},{id:13,x:2,y:0,z:0,label:"(((end, b0), c0), d0)",color:"#f97316"},{id:14,x:2,y:0,z:0,label:"(((end, b0), c0), d1)",color:"#ba5681"},{id:15,x:2,y:0,z:1,label:"(((end, b0), c1), end)",color:"#7c3aed"},{id:16,x:2,y:0,z:1,label:"(((end, b0), c1), d0)",color:"#f97316"},{id:17,x:2,y:0,z:1,label:"(((end, b0), c1), d1)",color:"#ba5681"},{id:18,x:2,y:1,z:2,label:"(((end, b1), end), end)",color:"#7c3aed"},{id:19,x:2,y:1,z:2,label:"(((end, b1), end), d0)",color:"#f97316"},{id:20,x:2,y:1,z:2,label:"(((end, b1), end), d1)",color:"#ba5681"},{id:21,x:2,y:1,z:0,label:"(((end, b1), c0), end)",color:"#7c3aed"},{id:22,x:2,y:1,z:0,label:"(((end, b1), c0), d0)",color:"#f97316"},{id:23,x:2,y:1,z:0,label:"(((end, b1), c0), d1)",color:"#ba5681"},{id:24,x:2,y:1,z:1,label:"(((end, b1), c1), end)",color:"#7c3aed"},{id:25,x:2,y:1,z:1,label:"(((end, b1), c1), d0)",color:"#f97316"},{id:26,x:2,y:1,z:1,label:"(((end, b1), c1), d1)",color:"#ba5681"},{id:27,x:0,y:2,z:2,label:"(((a0, end), end), end)",color:"#7c3aed"},{id:28,x:0,y:2,z:2,label:"(((a0, end), end), d0)",color:"#f97316"},{id:29,x:0,y:2,z:2,label:"(((a0, end), end), d1)",color:"#ba5681"},{id:30,x:0,y:2,z:0,label:"(((a0, end), c0), end)",color:"#7c3aed"},{id:31,x:0,y:2,z:0,label:"(((a0, end), c0), d0)",color:"#f97316"},{id:32,x:0,y:2,z:0,label:"(((a0, end), c0), d1)",color:"#ba5681"},{id:33,x:0,y:2,z:1,label:"(((a0, end), c1), end)",color:"#7c3aed"},{id:34,x:0,y:2,z:1,label:"(((a0, end), c1), d0)",color:"#f97316"},{id:35,x:0,y:2,z:1,label:"(((a0, end), c1), d1)",color:"#ba5681"},{id:36,x:0,y:0,z:2,label:"(((a0, b0), end), end)",color:"#7c3aed"},{id:37,x:0,y:0,z:2,label:"(((a0, b0), end), d0)",color:"#f97316"},{id:38,x:0,y:0,z:2,label:"(((a0, b0), end), d1)",color:"#ba5681"},{id:39,x:0,y:0,z:0,label:"(((a0, b0), c0), end)",color:"#7c3aed"},{id:40,x:0,y:0,z:0,label:"(((a0, b0), c0), d0)",color:"#2563eb"},{id:41,x:0,y:0,z:0,label:"(((a0, b0), c0), d1)",color:"#ba5681"},{id:42,x:0,y:0,z:1,label:"(((a0, b0), c1), end)",color:"#7c3aed"},{id:43,x:0,y:0,z:1,label:"(((a0, b0), c1), d0)",color:"#f97316"},{id:44,x:0,y:0,z:1,label:"(((a0, b0), c1), d1)",color:"#ba5681"},{id:45,x:0,y:1,z:2,label:"(((a0, b1), end), end)",color:"#7c3aed"},{id:46,x:0,y:1,z:2,label:"(((a0, b1), end), d0)",color:"#f97316"},{id:47,x:0,y:1,z:2,label:"(((a0, b1), end), d1)",color:"#ba5681"},{id:48,x:0,y:1,z:0,label:"(((a0, b1), c0), end)",color:"#7c3aed"},{id:49,x:0,y:1,z:0,label:"(((a0, b1), c0), d0)",color:"#f97316"},{id:50,x:0,y:1,z:0,label:"(((a0, b1), c0), d1)",color:"#ba5681"},{id:51,x:0,y:1,z:1,label:"(((a0, b1), c1), end)",color:"#7c3aed"},{id:52,x:0,y:1,z:1,label:"(((a0, b1), c1), d0)",color:"#f97316"},{id:53,x:0,y:1,z:1,label:"(((a0, b1), c1), d1)",color:"#ba5681"},{id:54,x:1,y:2,z:2,label:"(((a1, end), end), end)",color:"#7c3aed"},{id:55,x:1,y:2,z:2,label:"(((a1, end), end), d0)",color:"#f97316"},{id:56,x:1,y:2,z:2,label:"(((a1, end), end), d1)",color:"#ba5681"},{id:57,x:1,y:2,z:0,label:"(((a1, end), c0), end)",color:"#7c3aed"},{id:58,x:1,y:2,z:0,label:"(((a1, end), c0), d0)",color:"#f97316"},{id:59,x:1,y:2,z:0,label:"(((a1, end), c0), d1)",color:"#ba5681"},{id:60,x:1,y:2,z:1,label:"(((a1, end), c1), end)",color:"#7c3aed"},{id:61,x:1,y:2,z:1,label:"(((a1, end), c1), d0)",color:"#f97316"},{id:62,x:1,y:2,z:1,label:"(((a1, end), c1), d1)",color:"#ba5681"},{id:63,x:1,y:0,z:2,label:"(((a1, b0), end), end)",color:"#7c3aed"},{id:64,x:1,y:0,z:2,label:"(((a1, b0), end), d0)",color:"#f97316"},{id:65,x:1,y:0,z:2,label:"(((a1, b0), end), d1)",color:"#ba5681"},{id:66,x:1,y:0,z:0,label:"(((a1, b0), c0), end)",color:"#7c3aed"},{id:67,x:1,y:0,z:0,label:"(((a1, b0), c0), d0)",color:"#f97316"},{id:68,x:1,y:0,z:0,label:"(((a1, b0), c0), d1)",color:"#ba5681"},{id:69,x:1,y:0,z:1,label:"(((a1, b0), c1), end)",color:"#7c3aed"},{id:70,x:1,y:0,z:1,label:"(((a1, b0), c1), d0)",color:"#f97316"},{id:71,x:1,y:0,z:1,label:"(((a1, b0), c1), d1)",color:"#ba5681"},{id:72,x:1,y:1,z:2,label:"(((a1, b1), end), end)",color:"#7c3aed"},{id:73,x:1,y:1,z:2,label:"(((a1, b1), end), d0)",color:"#f97316"},{id:74,x:1,y:1,z:2,label:"(((a1, b1), end), d1)",color:"#ba5681"},{id:75,x:1,y:1,z:0,label:"(((a1, b1), c0), end)",color:"#7c3aed"},{id:76,x:1,y:1,z:0,label:"(((a1, b1), c0), d0)",color:"#f97316"},{id:77,x:1,y:1,z:0,label:"(((a1, b1), c0), d1)",color:"#ba5681"},{id:78,x:1,y:1,z:1,label:"(((a1, b1), c1), end)",color:"#7c3aed"},{id:79,x:1,y:1,z:1,label:"(((a1, b1), c1), d0)",color:"#f97316"},{id:80,x:1,y:1,z:1,label:"(((a1, b1), c1), d1)",color:"#ba5681"}];
+const edges = [{src:1,tgt:2,label:"d0"},{src:2,tgt:0,label:"d1"},{src:3,tgt:6,label:"c0"},{src:4,tgt:7,label:"c0"},{src:4,tgt:5,label:"d0"},{src:5,tgt:8,label:"c0"},{src:5,tgt:3,label:"d1"},{src:6,tgt:0,label:"c1"},{src:7,tgt:1,label:"c1"},{src:7,tgt:8,label:"d0"},{src:8,tgt:2,label:"c1"},{src:8,tgt:6,label:"d1"},{src:9,tgt:18,label:"b0"},{src:10,tgt:19,label:"b0"},{src:10,tgt:11,label:"d0"},{src:11,tgt:20,label:"b0"},{src:11,tgt:9,label:"d1"},{src:12,tgt:21,label:"b0"},{src:12,tgt:15,label:"c0"},{src:13,tgt:22,label:"b0"},{src:13,tgt:16,label:"c0"},{src:13,tgt:14,label:"d0"},{src:14,tgt:23,label:"b0"},{src:14,tgt:17,label:"c0"},{src:14,tgt:12,label:"d1"},{src:15,tgt:24,label:"b0"},{src:15,tgt:9,label:"c1"},{src:16,tgt:25,label:"b0"},{src:16,tgt:10,label:"c1"},{src:16,tgt:17,label:"d0"},{src:17,tgt:26,label:"b0"},{src:17,tgt:11,label:"c1"},{src:17,tgt:15,label:"d1"},{src:18,tgt:0,label:"b1"},{src:19,tgt:1,label:"b1"},{src:19,tgt:20,label:"d0"},{src:20,tgt:2,label:"b1"},{src:20,tgt:18,label:"d1"},{src:21,tgt:3,label:"b1"},{src:21,tgt:24,label:"c0"},{src:22,tgt:4,label:"b1"},{src:22,tgt:25,label:"c0"},{src:22,tgt:23,label:"d0"},{src:23,tgt:5,label:"b1"},{src:23,tgt:26,label:"c0"},{src:23,tgt:21,label:"d1"},{src:24,tgt:6,label:"b1"},{src:24,tgt:18,label:"c1"},{src:25,tgt:7,label:"b1"},{src:25,tgt:19,label:"c1"},{src:25,tgt:26,label:"d0"},{src:26,tgt:8,label:"b1"},{src:26,tgt:20,label:"c1"},{src:26,tgt:24,label:"d1"},{src:27,tgt:54,label:"a0"},{src:28,tgt:55,label:"a0"},{src:28,tgt:29,label:"d0"},{src:29,tgt:56,label:"a0"},{src:29,tgt:27,label:"d1"},{src:30,tgt:57,label:"a0"},{src:30,tgt:33,label:"c0"},{src:31,tgt:58,label:"a0"},{src:31,tgt:34,label:"c0"},{src:31,tgt:32,label:"d0"},{src:32,tgt:59,label:"a0"},{src:32,tgt:35,label:"c0"},{src:32,tgt:30,label:"d1"},{src:33,tgt:60,label:"a0"},{src:33,tgt:27,label:"c1"},{src:34,tgt:61,label:"a0"},{src:34,tgt:28,label:"c1"},{src:34,tgt:35,label:"d0"},{src:35,tgt:62,label:"a0"},{src:35,tgt:29,label:"c1"},{src:35,tgt:33,label:"d1"},{src:36,tgt:63,label:"a0"},{src:36,tgt:45,label:"b0"},{src:37,tgt:64,label:"a0"},{src:37,tgt:46,label:"b0"},{src:37,tgt:38,label:"d0"},{src:38,tgt:65,label:"a0"},{src:38,tgt:47,label:"b0"},{src:38,tgt:36,label:"d1"},{src:39,tgt:66,label:"a0"},{src:39,tgt:48,label:"b0"},{src:39,tgt:42,label:"c0"},{src:40,tgt:67,label:"a0"},{src:40,tgt:49,label:"b0"},{src:40,tgt:43,label:"c0"},{src:40,tgt:41,label:"d0"},{src:41,tgt:68,label:"a0"},{src:41,tgt:50,label:"b0"},{src:41,tgt:44,label:"c0"},{src:41,tgt:39,label:"d1"},{src:42,tgt:69,label:"a0"},{src:42,tgt:51,label:"b0"},{src:42,tgt:36,label:"c1"},{src:43,tgt:70,label:"a0"},{src:43,tgt:52,label:"b0"},{src:43,tgt:37,label:"c1"},{src:43,tgt:44,label:"d0"},{src:44,tgt:71,label:"a0"},{src:44,tgt:53,label:"b0"},{src:44,tgt:38,label:"c1"},{src:44,tgt:42,label:"d1"},{src:45,tgt:72,label:"a0"},{src:45,tgt:27,label:"b1"},{src:46,tgt:73,label:"a0"},{src:46,tgt:28,label:"b1"},{src:46,tgt:47,label:"d0"},{src:47,tgt:74,label:"a0"},{src:47,tgt:29,label:"b1"},{src:47,tgt:45,label:"d1"},{src:48,tgt:75,label:"a0"},{src:48,tgt:30,label:"b1"},{src:48,tgt:51,label:"c0"},{src:49,tgt:76,label:"a0"},{src:49,tgt:31,label:"b1"},{src:49,tgt:52,label:"c0"},{src:49,tgt:50,label:"d0"},{src:50,tgt:77,label:"a0"},{src:50,tgt:32,label:"b1"},{src:50,tgt:53,label:"c0"},{src:50,tgt:48,label:"d1"},{src:51,tgt:78,label:"a0"},{src:51,tgt:33,label:"b1"},{src:51,tgt:45,label:"c1"},{src:52,tgt:79,label:"a0"},{src:52,tgt:34,label:"b1"},{src:52,tgt:46,label:"c1"},{src:52,tgt:53,label:"d0"},{src:53,tgt:80,label:"a0"},{src:53,tgt:35,label:"b1"},{src:53,tgt:47,label:"c1"},{src:53,tgt:51,label:"d1"},{src:54,tgt:0,label:"a1"},{src:55,tgt:1,label:"a1"},{src:55,tgt:56,label:"d0"},{src:56,tgt:2,label:"a1"},{src:56,tgt:54,label:"d1"},{src:57,tgt:3,label:"a1"},{src:57,tgt:60,label:"c0"},{src:58,tgt:4,label:"a1"},{src:58,tgt:61,label:"c0"},{src:58,tgt:59,label:"d0"},{src:59,tgt:5,label:"a1"},{src:59,tgt:62,label:"c0"},{src:59,tgt:57,label:"d1"},{src:60,tgt:6,label:"a1"},{src:60,tgt:54,label:"c1"},{src:61,tgt:7,label:"a1"},{src:61,tgt:55,label:"c1"},{src:61,tgt:62,label:"d0"},{src:62,tgt:8,label:"a1"},{src:62,tgt:56,label:"c1"},{src:62,tgt:60,label:"d1"},{src:63,tgt:9,label:"a1"},{src:63,tgt:72,label:"b0"},{src:64,tgt:10,label:"a1"},{src:64,tgt:73,label:"b0"},{src:64,tgt:65,label:"d0"},{src:65,tgt:11,label:"a1"},{src:65,tgt:74,label:"b0"},{src:65,tgt:63,label:"d1"},{src:66,tgt:12,label:"a1"},{src:66,tgt:75,label:"b0"},{src:66,tgt:69,label:"c0"},{src:67,tgt:13,label:"a1"},{src:67,tgt:76,label:"b0"},{src:67,tgt:70,label:"c0"},{src:67,tgt:68,label:"d0"},{src:68,tgt:14,label:"a1"},{src:68,tgt:77,label:"b0"},{src:68,tgt:71,label:"c0"},{src:68,tgt:66,label:"d1"},{src:69,tgt:15,label:"a1"},{src:69,tgt:78,label:"b0"},{src:69,tgt:63,label:"c1"},{src:70,tgt:16,label:"a1"},{src:70,tgt:79,label:"b0"},{src:70,tgt:64,label:"c1"},{src:70,tgt:71,label:"d0"},{src:71,tgt:17,label:"a1"},{src:71,tgt:80,label:"b0"},{src:71,tgt:65,label:"c1"},{src:71,tgt:69,label:"d1"},{src:72,tgt:18,label:"a1"},{src:72,tgt:54,label:"b1"},{src:73,tgt:19,label:"a1"},{src:73,tgt:55,label:"b1"},{src:73,tgt:74,label:"d0"},{src:74,tgt:20,label:"a1"},{src:74,tgt:56,label:"b1"},{src:74,tgt:72,label:"d1"},{src:75,tgt:21,label:"a1"},{src:75,tgt:57,label:"b1"},{src:75,tgt:78,label:"c0"},{src:76,tgt:22,label:"a1"},{src:76,tgt:58,label:"b1"},{src:76,tgt:79,label:"c0"},{src:76,tgt:77,label:"d0"},{src:77,tgt:23,label:"a1"},{src:77,tgt:59,label:"b1"},{src:77,tgt:80,label:"c0"},{src:77,tgt:75,label:"d1"},{src:78,tgt:24,label:"a1"},{src:78,tgt:60,label:"b1"},{src:78,tgt:72,label:"c1"},{src:79,tgt:25,label:"a1"},{src:79,tgt:61,label:"b1"},{src:79,tgt:73,label:"c1"},{src:79,tgt:80,label:"d0"},{src:80,tgt:26,label:"a1"},{src:80,tgt:62,label:"b1"},{src:80,tgt:74,label:"c1"},{src:80,tgt:78,label:"d1"}];
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf8f9fa);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+
+// Compute center and scale
+let cx=0,cy=0,cz=0;
+nodes.forEach(n=>{cx+=n.x;cy+=n.y;cz+=n.z});
+cx/=nodes.length; cy/=nodes.length; cz/=nodes.length;
+let maxR=1;
+nodes.forEach(n=>{
+  const d=Math.sqrt((n.x-cx)**2+(n.y-cy)**2+(n.z-cz)**2);
+  if(d>maxR) maxR=d;
+});
+const spacing = 2.5;
+
+// Add nodes as spheres
+const nodeMeshes = [];
+const nodeMap = {};
+nodes.forEach(n=>{
+  const geo = new THREE.SphereGeometry(0.18, 16, 16);
+  const mat = new THREE.MeshPhongMaterial({color: n.color});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set((n.x-cx)*spacing, -(n.y-cy)*spacing, (n.z-cz)*spacing);
+  mesh.userData = {label: n.label, id: n.id};
+  scene.add(mesh);
+  nodeMeshes.push(mesh);
+  nodeMap[n.id] = mesh;
+});
+
+// Add edges as lines
+edges.forEach(e=>{
+  const s = nodeMap[e.src], t = nodeMap[e.tgt];
+  if(!s||!t) return;
+  const geo = new THREE.BufferGeometry().setFromPoints([s.position, t.position]);
+  const mat = new THREE.LineBasicMaterial({color: 0x999999, transparent:true, opacity:0.5});
+  scene.add(new THREE.Line(geo, mat));
+});
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+dl.position.set(5, 10, 7);
+scene.add(dl);
+
+camera.position.set(maxR*spacing*1.5, maxR*spacing*1.5, maxR*spacing*1.5);
+controls.target.set(0, 0, 0);
+controls.update();
+
+// Tooltip
+const tooltip = document.getElementById('tooltip');
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('mousemove', e=>{
+  mouse.x = (e.clientX/window.innerWidth)*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(nodeMeshes);
+  if(hits.length>0){
+    tooltip.style.display='block';
+    tooltip.style.left=e.clientX+12+'px';
+    tooltip.style.top=e.clientY+12+'px';
+    tooltip.textContent=hits[0].object.userData.label;
+  } else {
+    tooltip.style.display='none';
+  }
+});
+
+window.addEventListener('resize', ()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)}
+animate();
+
+</script></body></html>

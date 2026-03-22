@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html><head><meta charset='utf-8'><title>3D Product Lattice</title>
+<style>body{margin:0;overflow:hidden;font-family:sans-serif}
+#info{position:absolute;top:10px;left:10px;color:#333;background:rgba(255,255,255,0.9);padding:10px;border-radius:6px;font-size:13px}
+#tooltip{position:absolute;display:none;background:rgba(0,0,0,0.8);color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;pointer-events:none}
+</style></head><body>
+<div id="info"><b>3D Product Lattice</b><br>
+27 states, 54 transitions<br>
+X: Factor 1 (3 states)<br>
+Y: Factor 2 (3 states)<br>
+Z: Factor 3 (3 states)</div>
+<div id="tooltip"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from "three";
+import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+const nodes = [{id:0,x:2,y:2,z:2,label:"end",color:"#16a34a"},{id:1,x:2,y:2,z:0,label:"((end, end), c0)",color:"#9ca3af"},{id:2,x:2,y:2,z:1,label:"((end, end), c1)",color:"#9ca3af"},{id:3,x:2,y:0,z:2,label:"((end, b0), end)",color:"#9ca3af"},{id:4,x:2,y:0,z:0,label:"((end, b0), c0)",color:"#9ca3af"},{id:5,x:2,y:0,z:1,label:"((end, b0), c1)",color:"#9ca3af"},{id:6,x:2,y:1,z:2,label:"((end, b1), end)",color:"#9ca3af"},{id:7,x:2,y:1,z:0,label:"((end, b1), c0)",color:"#9ca3af"},{id:8,x:2,y:1,z:1,label:"((end, b1), c1)",color:"#9ca3af"},{id:9,x:0,y:2,z:2,label:"((a0, end), end)",color:"#9ca3af"},{id:10,x:0,y:2,z:0,label:"((a0, end), c0)",color:"#9ca3af"},{id:11,x:0,y:2,z:1,label:"((a0, end), c1)",color:"#9ca3af"},{id:12,x:0,y:0,z:2,label:"((a0, b0), end)",color:"#9ca3af"},{id:13,x:0,y:0,z:0,label:"((a0, b0), c0)",color:"#2563eb"},{id:14,x:0,y:0,z:1,label:"((a0, b0), c1)",color:"#9ca3af"},{id:15,x:0,y:1,z:2,label:"((a0, b1), end)",color:"#9ca3af"},{id:16,x:0,y:1,z:0,label:"((a0, b1), c0)",color:"#9ca3af"},{id:17,x:0,y:1,z:1,label:"((a0, b1), c1)",color:"#9ca3af"},{id:18,x:1,y:2,z:2,label:"((a1, end), end)",color:"#9ca3af"},{id:19,x:1,y:2,z:0,label:"((a1, end), c0)",color:"#9ca3af"},{id:20,x:1,y:2,z:1,label:"((a1, end), c1)",color:"#9ca3af"},{id:21,x:1,y:0,z:2,label:"((a1, b0), end)",color:"#9ca3af"},{id:22,x:1,y:0,z:0,label:"((a1, b0), c0)",color:"#9ca3af"},{id:23,x:1,y:0,z:1,label:"((a1, b0), c1)",color:"#9ca3af"},{id:24,x:1,y:1,z:2,label:"((a1, b1), end)",color:"#9ca3af"},{id:25,x:1,y:1,z:0,label:"((a1, b1), c0)",color:"#9ca3af"},{id:26,x:1,y:1,z:1,label:"((a1, b1), c1)",color:"#9ca3af"}];
+const edges = [{src:1,tgt:2,label:"c0"},{src:2,tgt:0,label:"c1"},{src:3,tgt:6,label:"b0"},{src:4,tgt:7,label:"b0"},{src:4,tgt:5,label:"c0"},{src:5,tgt:8,label:"b0"},{src:5,tgt:3,label:"c1"},{src:6,tgt:0,label:"b1"},{src:7,tgt:1,label:"b1"},{src:7,tgt:8,label:"c0"},{src:8,tgt:2,label:"b1"},{src:8,tgt:6,label:"c1"},{src:9,tgt:18,label:"a0"},{src:10,tgt:19,label:"a0"},{src:10,tgt:11,label:"c0"},{src:11,tgt:20,label:"a0"},{src:11,tgt:9,label:"c1"},{src:12,tgt:21,label:"a0"},{src:12,tgt:15,label:"b0"},{src:13,tgt:22,label:"a0"},{src:13,tgt:16,label:"b0"},{src:13,tgt:14,label:"c0"},{src:14,tgt:23,label:"a0"},{src:14,tgt:17,label:"b0"},{src:14,tgt:12,label:"c1"},{src:15,tgt:24,label:"a0"},{src:15,tgt:9,label:"b1"},{src:16,tgt:25,label:"a0"},{src:16,tgt:10,label:"b1"},{src:16,tgt:17,label:"c0"},{src:17,tgt:26,label:"a0"},{src:17,tgt:11,label:"b1"},{src:17,tgt:15,label:"c1"},{src:18,tgt:0,label:"a1"},{src:19,tgt:1,label:"a1"},{src:19,tgt:20,label:"c0"},{src:20,tgt:2,label:"a1"},{src:20,tgt:18,label:"c1"},{src:21,tgt:3,label:"a1"},{src:21,tgt:24,label:"b0"},{src:22,tgt:4,label:"a1"},{src:22,tgt:25,label:"b0"},{src:22,tgt:23,label:"c0"},{src:23,tgt:5,label:"a1"},{src:23,tgt:26,label:"b0"},{src:23,tgt:21,label:"c1"},{src:24,tgt:6,label:"a1"},{src:24,tgt:18,label:"b1"},{src:25,tgt:7,label:"a1"},{src:25,tgt:19,label:"b1"},{src:25,tgt:26,label:"c0"},{src:26,tgt:8,label:"a1"},{src:26,tgt:20,label:"b1"},{src:26,tgt:24,label:"c1"}];
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf8f9fa);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+
+// Compute center and scale
+let cx=0,cy=0,cz=0;
+nodes.forEach(n=>{cx+=n.x;cy+=n.y;cz+=n.z});
+cx/=nodes.length; cy/=nodes.length; cz/=nodes.length;
+let maxR=1;
+nodes.forEach(n=>{
+  const d=Math.sqrt((n.x-cx)**2+(n.y-cy)**2+(n.z-cz)**2);
+  if(d>maxR) maxR=d;
+});
+const spacing = 2.5;
+
+// Add nodes as spheres
+const nodeMeshes = [];
+const nodeMap = {};
+nodes.forEach(n=>{
+  const geo = new THREE.SphereGeometry(0.18, 16, 16);
+  const mat = new THREE.MeshPhongMaterial({color: n.color});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set((n.x-cx)*spacing, -(n.y-cy)*spacing, (n.z-cz)*spacing);
+  mesh.userData = {label: n.label, id: n.id};
+  scene.add(mesh);
+  nodeMeshes.push(mesh);
+  nodeMap[n.id] = mesh;
+});
+
+// Add edges as lines
+edges.forEach(e=>{
+  const s = nodeMap[e.src], t = nodeMap[e.tgt];
+  if(!s||!t) return;
+  const geo = new THREE.BufferGeometry().setFromPoints([s.position, t.position]);
+  const mat = new THREE.LineBasicMaterial({color: 0x999999, transparent:true, opacity:0.5});
+  scene.add(new THREE.Line(geo, mat));
+});
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+dl.position.set(5, 10, 7);
+scene.add(dl);
+
+camera.position.set(maxR*spacing*1.5, maxR*spacing*1.5, maxR*spacing*1.5);
+controls.target.set(0, 0, 0);
+controls.update();
+
+// Tooltip
+const tooltip = document.getElementById('tooltip');
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+renderer.domElement.addEventListener('mousemove', e=>{
+  mouse.x = (e.clientX/window.innerWidth)*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(nodeMeshes);
+  if(hits.length>0){
+    tooltip.style.display='block';
+    tooltip.style.left=e.clientX+12+'px';
+    tooltip.style.top=e.clientY+12+'px';
+    tooltip.textContent=hits[0].object.userData.label;
+  } else {
+    tooltip.style.display='none';
+  }
+});
+
+window.addEventListener('resize', ()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)}
+animate();
+
+</script></body></html>
