@@ -35,6 +35,15 @@ def main(argv: list[str] | None = None) -> None:
         help="Protocol name (used with --protocol custom)",
     )
     parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Run LIVE conformance tests against a running server",
+    )
+    parser.add_argument(
+        "--target",
+        help="Server URL for --live (e.g., http://localhost:3000)",
+    )
+    parser.add_argument(
         "--report",
         action="store_true",
         help="Print full conformance report",
@@ -114,6 +123,19 @@ def main(argv: list[str] | None = None) -> None:
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    # Handle --live mode
+    if args.live:
+        if not args.target:
+            parser.error("--target is required with --live")
+        from reticulate.mcp_runtime import ConformanceTester
+        tester = ConformanceTester(
+            target=args.target,
+            protocol=args.protocol if args.protocol != "custom" else "mcp",
+        )
+        report = tester.run_all()
+        print(report.summary())
+        sys.exit(0 if report.failed_tests == 0 else 1)
 
     # Default to --report if no specific output requested
     if not any([args.report, args.test_gen, args.coverage,
