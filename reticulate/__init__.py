@@ -278,6 +278,17 @@ from reticulate.tensor import (
     coupled_tensor,
     tensor_product,
 )
+from reticulate.mcp_conformance import (
+    ConformanceReport,
+    ProtocolModel,
+    TransitionAnnotation,
+    a2a_protocol,
+    conformance_report,
+    custom_protocol,
+    format_report,
+    generate_conformance_tests,
+    mcp_protocol,
+)
 from reticulate.matrix import (
     AlgebraicInvariants,
     adjacency_matrix,
