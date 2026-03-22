@@ -12,8 +12,11 @@ from __future__ import annotations
 import argparse
 import sys
 
+from pathlib import Path
+
 from reticulate.lattice import check_distributive, check_lattice, compute_meet, compute_join
-from reticulate.parser import ParseError, parse, pretty
+from reticulate.parser import ParseError, parse, parse_program, pretty
+from reticulate.resolve import ResolveError, resolve
 from reticulate.statespace import StateSpace, build_statespace
 from reticulate.visualize import dot_source, render_hasse
 
@@ -33,7 +36,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "type_string",
+        nargs="?",
+        default=None,
         help='Session type string, e.g. "&{open: &{read: end, close: end}}"',
+    )
+    parser.add_argument(
+        "-f", "--file",
+        default=None,
+        metavar="FILE",
+        help="Read session type (or equation program) from FILE instead of command line",
     )
     parser.add_argument(
         "--hasse",
@@ -146,11 +157,27 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    # Parse the session type
+    # Determine source string
+    if args.file is not None:
+        try:
+            source = Path(args.file).read_text()
+        except (OSError, IOError) as e:
+            print(f"Error reading file: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.type_string is not None:
+        source = args.type_string
+    else:
+        parser.error("either type_string or --file is required")
+
+    # Parse using parse_program (handles both bare expressions and equations)
     try:
-        ast = parse(args.type_string)
+        program = parse_program(source)
+        ast = resolve(program)
     except ParseError as e:
         print(f"Parse error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ResolveError as e:
+        print(f"Resolve error: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Build state space

@@ -17,6 +17,7 @@ from reticulate.parser import (
     Continuation,
     End,
     Parallel,
+    Program,
     Rec,
     Select,
     SessionType,
@@ -318,6 +319,77 @@ def build_statespace(session_type: SessionType) -> StateSpace:
     return builder.build(session_type)
 
 
+def build_statespace_from_program(program: Program) -> StateSpace:
+    """Build state space from an equation-grammar program.
+
+    Uses the placeholder-merge pattern so that shared definition names
+    produce shared states (not copies).  Each definition gets a
+    placeholder state ID; all references to that name point to the
+    same placeholder, which is then merged with the actual entry state.
+
+    Falls back to resolve-then-build for programs that contain mutual
+    recursion (where the placeholder approach would need cross-definition
+    cycles that the builder doesn't support natively).
+    """
+    from reticulate.resolve import resolve
+
+    defs = {d.name: d.body for d in program.definitions}
+    def_names = set(defs.keys())
+    entry_name = program.definitions[0].name
+
+    # Detect mutual recursion: if any definition body references another
+    # definition that also references back.
+    # For simplicity and correctness, use the placeholder-merge approach
+    # for non-mutually-recursive programs, and fall back to resolve for
+    # mutually recursive ones.
+    from reticulate.resolve import _free_def_names
+
+    # Build dependency graph
+    deps: dict[str, set[str]] = {}
+    for name, body in defs.items():
+        deps[name] = _free_def_names(body, def_names, set()) - {name}
+
+    # Check for mutual recursion (cycles in dependency graph excluding self-loops)
+    has_mutual = _has_mutual_recursion(deps)
+
+    if has_mutual:
+        # Fall back to resolve + build
+        ast = resolve(program)
+        return build_statespace(ast)
+
+    # No mutual recursion: use placeholder-merge for sharing
+    builder = _ProgramBuilder()
+    return builder.build_program(defs, entry_name)
+
+
+def _has_mutual_recursion(deps: dict[str, set[str]]) -> bool:
+    """Check if the dependency graph has cycles (mutual recursion)."""
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {n: WHITE for n in deps}
+
+    for start in deps:
+        if color[start] != WHITE:
+            continue
+        stack: list[tuple[str, bool]] = [(start, False)]
+        while stack:
+            node, processed = stack.pop()
+            if processed:
+                color[node] = BLACK
+                continue
+            if color[node] == GRAY:
+                continue
+            if color[node] == BLACK:
+                continue
+            color[node] = GRAY
+            stack.append((node, True))
+            for dep in deps.get(node, set()):
+                if color[dep] == GRAY:
+                    return True
+                if color[dep] == WHITE:
+                    stack.append((dep, False))
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Internal builder
 # ---------------------------------------------------------------------------
@@ -511,5 +583,252 @@ class _Builder:
             for src, _, tgt in self._transitions:
                 if src == s:
                     visited.add(s)
+                    stack.append(tgt)
+        return visited
+
+
+# ---------------------------------------------------------------------------
+# Program builder: placeholder-merge for shared definitions
+# ---------------------------------------------------------------------------
+
+class _ProgramBuilder:
+    """Builds a state space from a set of named definitions.
+
+    Uses the placeholder-merge pattern: allocate a placeholder state ID
+    for each definition, build each body with definition names mapped to
+    placeholders, then merge placeholders with actual entry states.
+    This ensures that two branches referencing the same definition name
+    point to the SAME state.
+    """
+
+    def __init__(self) -> None:
+        self._next_id: int = 0
+        self._states: dict[int, str] = {}
+        self._transitions: list[tuple[int, str, int]] = []
+        self._selection_transitions: set[tuple[int, str, int]] = set()
+        self._product_coords: dict[int, tuple[int, ...]] | None = None
+        self._product_factors: list[StateSpace] | None = None
+
+    def _fresh(self, label: str) -> int:
+        sid = self._next_id
+        self._next_id += 1
+        self._states[sid] = label
+        return sid
+
+    def build_program(
+        self,
+        defs: dict[str, SessionType],
+        entry_name: str,
+    ) -> StateSpace:
+        """Build a StateSpace from named definitions with sharing."""
+        end_id = self._fresh("end")
+
+        # Topological order: resolve dependencies bottom-up
+        # so that non-recursive definitions are built before those that reference them
+        order = self._topo_sort(defs, entry_name)
+
+        # Allocate placeholders for all definitions
+        placeholders: dict[str, int] = {}
+        for name in order:
+            placeholders[name] = self._fresh(f"def_{name}")
+
+        # Build each definition body, mapping definition names to placeholders
+        entry_ids: dict[str, int] = {}
+        for name in order:
+            body = defs[name]
+            # Build env: definition names -> placeholder IDs
+            env: dict[str, int] = dict(placeholders)
+            actual_entry = self._build(body, env, end_id)
+            entry_ids[name] = actual_entry
+
+        # Merge placeholders with actual entry states
+        for name in order:
+            placeholder = placeholders[name]
+            actual = entry_ids[name]
+            if placeholder != actual:
+                self._merge(placeholder, actual)
+                entry_ids[name] = actual
+
+        top_id = entry_ids[entry_name]
+
+        reachable = self._reachable(top_id)
+        reachable_transitions = [
+            (s, l, t) for s, l, t in self._transitions if s in reachable
+        ]
+        reachable_selections = {
+            (s, l, t) for s, l, t in self._selection_transitions if s in reachable
+        }
+        product_coords = None
+        if self._product_coords is not None:
+            product_coords = {
+                s: c for s, c in self._product_coords.items() if s in reachable
+            }
+
+        return StateSpace(
+            states=reachable,
+            transitions=reachable_transitions,
+            top=top_id,
+            bottom=end_id,
+            labels={s: self._states[s] for s in reachable if s in self._states},
+            selection_transitions=reachable_selections,
+            product_coords=product_coords,
+            product_factors=self._product_factors,
+        )
+
+    def _topo_sort(
+        self,
+        defs: dict[str, SessionType],
+        entry_name: str,
+    ) -> list[str]:
+        """Topological sort of definitions (dependencies first).
+
+        Only includes definitions reachable from the entry.
+        Self-recursive definitions are included (self-loops ignored for ordering).
+        """
+        from reticulate.resolve import _free_def_names
+
+        def_names = set(defs.keys())
+        deps: dict[str, set[str]] = {}
+        for name, body in defs.items():
+            deps[name] = _free_def_names(body, def_names, set()) - {name}
+
+        # DFS-based topo sort from entry
+        order: list[str] = []
+        visited: set[str] = set()
+
+        def visit(name: str) -> None:
+            if name in visited or name not in defs:
+                return
+            visited.add(name)
+            for dep in deps.get(name, set()):
+                visit(dep)
+            order.append(name)
+
+        visit(entry_name)
+        return order
+
+    def _build(
+        self,
+        node: SessionType,
+        env: dict[str, int],
+        end_id: int,
+    ) -> int:
+        """Return the entry state ID for *node*."""
+        match node:
+            case End():
+                return end_id
+
+            case Wait():
+                return end_id
+
+            case Var(name=name):
+                if name not in env:
+                    raise ValueError(f"unbound type variable: {name!r}")
+                return env[name]
+
+            case Branch(choices=choices):
+                if len(choices) == 1:
+                    label = choices[0][0]
+                else:
+                    label = "&{" + ", ".join(l for l, _ in choices) + "}"
+                entry = self._fresh(label)
+                for lbl, body in choices:
+                    target = self._build(body, env, end_id)
+                    self._transitions.append((entry, lbl, target))
+                return entry
+
+            case Select(choices=choices):
+                label = "+{" + ", ".join(l for l, _ in choices) + "}"
+                entry = self._fresh(label)
+                for lbl, body in choices:
+                    target = self._build(body, env, end_id)
+                    tr = (entry, lbl, target)
+                    self._transitions.append(tr)
+                    self._selection_transitions.add(tr)
+                return entry
+
+            case Rec(var=var, body=body):
+                placeholder = self._fresh(f"rec_{var}")
+                new_env = {**env, var: placeholder}
+                body_entry = self._build(body, new_env, end_id)
+                if body_entry != placeholder:
+                    self._merge(placeholder, body_entry)
+                    return body_entry
+                return placeholder
+
+            case Continuation(left=left, right=right):
+                right_entry = self._build(right, env, end_id)
+                left_entry = self._build(left, env, right_entry)
+                return left_entry
+
+            case Parallel(branches=branches):
+                return self._build_parallel(branches, end_id)
+
+            case _:
+                raise TypeError(f"unknown AST node: {type(node).__name__}")
+
+    def _merge(self, old_id: int, new_id: int) -> None:
+        """Redirect every occurrence of *old_id* to *new_id* in transitions."""
+        self._transitions = [
+            (
+                new_id if s == old_id else s,
+                l,
+                new_id if t == old_id else t,
+            )
+            for s, l, t in self._transitions
+        ]
+        self._selection_transitions = {
+            (
+                new_id if s == old_id else s,
+                l,
+                new_id if t == old_id else t,
+            )
+            for s, l, t in self._selection_transitions
+        }
+        if old_id in self._states:
+            del self._states[old_id]
+
+    def _build_parallel(
+        self,
+        branches: tuple[SessionType, ...],
+        end_id: int,
+    ) -> int:
+        """Build each branch independently, compute the n-ary product, embed it."""
+        from functools import reduce
+        spaces = [build_statespace(b) for b in branches]
+        prod = reduce(product_statespace, spaces)
+
+        remap: dict[int, int] = {}
+        for sid in prod.states:
+            if sid == prod.bottom:
+                remap[sid] = end_id
+            else:
+                remap[sid] = self._fresh(prod.labels.get(sid, "?"))
+
+        for src, lbl, tgt in prod.transitions:
+            remapped = (remap[src], lbl, remap[tgt])
+            self._transitions.append(remapped)
+            if prod.is_selection(src, lbl, tgt):
+                self._selection_transitions.add(remapped)
+
+        if prod.product_coords is not None:
+            self._product_coords = {
+                remap[sid]: coord
+                for sid, coord in prod.product_coords.items()
+            }
+            self._product_factors = prod.product_factors
+
+        return remap[prod.top]
+
+    def _reachable(self, start: int) -> set[int]:
+        visited: set[int] = set()
+        stack = [start]
+        while stack:
+            s = stack.pop()
+            if s in visited:
+                continue
+            visited.add(s)
+            for src, _, tgt in self._transitions:
+                if src == s:
                     stack.append(tgt)
         return visited

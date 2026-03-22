@@ -99,6 +99,23 @@ SessionType = Union[End, Wait, Var, Branch, Select, Parallel, Rec, Continuation]
 
 
 # ---------------------------------------------------------------------------
+# Equation grammar: named definitions
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Definition:
+    """Named type definition: Name = S"""
+    name: str
+    body: SessionType
+
+
+@dataclass(frozen=True)
+class Program:
+    """A sequence of named definitions. First definition is the entry point."""
+    definitions: tuple[Definition, ...]
+
+
+# ---------------------------------------------------------------------------
 # Tokenizer
 # ---------------------------------------------------------------------------
 
@@ -113,6 +130,7 @@ class TokenKind(Enum):
     COMMA = auto()     # ,
     DOT = auto()       # .
     PAR = auto()       # ||
+    EQUALS = auto()    # =
     IDENT = auto()     # identifier or keyword (end, wait, rec)
     EOF = auto()
 
@@ -165,6 +183,7 @@ def tokenize(source: str) -> list[Token]:
             ":": TokenKind.COLON,
             ",": TokenKind.COMMA,
             ".": TokenKind.DOT,
+            "=": TokenKind.EQUALS,
         }
         if ch in single:
             tokens.append(Token(single[ch], ch, i))
@@ -427,3 +446,106 @@ def _pretty(node: SessionType, *, in_tight: bool) -> str:
             return f"{_pretty(left, in_tight=True)} . {_pretty(right, in_tight=True)}"
         case _:
             raise TypeError(f"unknown AST node: {type(node).__name__}")
+
+
+# ---------------------------------------------------------------------------
+# Equation grammar parser
+# ---------------------------------------------------------------------------
+
+_KEYWORDS = frozenset({"rec", "end", "wait"})
+
+
+def parse_program(source: str) -> Program:
+    """Parse a session type program (equation grammar).
+
+    Supports both:
+    - Bare expressions: ``"&{a: end}"`` -> Program with synthetic ``_main`` definition
+    - Equation definitions: ``"S = &{a: T}\\nT = end"`` -> Program with named definitions
+
+    Raises ``ParseError`` on invalid syntax.
+    """
+    tokens = tokenize(source)
+
+    # Decide mode: if first two tokens are IDENT EQUALS, parse as definitions.
+    # But skip if the ident is a keyword (rec, end, wait).
+    is_equation = (
+        len(tokens) >= 3
+        and tokens[0].kind is TokenKind.IDENT
+        and tokens[0].value not in _KEYWORDS
+        and tokens[1].kind is TokenKind.EQUALS
+    )
+
+    if is_equation:
+        return _parse_definitions(tokens)
+    else:
+        # Bare expression — wrap as _main
+        ast = _Parser(tokens).parse()
+        return Program(definitions=(Definition("_main", ast),))
+
+
+def _parse_definitions(tokens: list[Token]) -> Program:
+    """Parse a sequence of ``Name = S`` definitions from a token list."""
+    definitions: list[Definition] = []
+    pos = 0
+
+    while pos < len(tokens) and tokens[pos].kind is not TokenKind.EOF:
+        # Expect: IDENT EQUALS body
+        name_tok = tokens[pos]
+        if name_tok.kind is not TokenKind.IDENT:
+            raise ParseError(
+                f"expected definition name, got {name_tok.kind.name} ({name_tok.value!r})",
+                name_tok.pos,
+            )
+        if name_tok.value in _KEYWORDS:
+            raise ParseError(
+                f"{name_tok.value!r} is a keyword, not a valid definition name",
+                name_tok.pos,
+            )
+        pos += 1
+
+        eq_tok = tokens[pos]
+        if eq_tok.kind is not TokenKind.EQUALS:
+            raise ParseError(
+                f"expected '=' after definition name {name_tok.value!r}, "
+                f"got {eq_tok.kind.name} ({eq_tok.value!r})",
+                eq_tok.pos,
+            )
+        pos += 1
+
+        # Parse the body using _Parser starting at pos.
+        # We need to find where this definition's body ends.
+        # A definition body ends at: EOF, or the next IDENT EQUALS pattern
+        # (where IDENT is not a keyword).
+        # Strategy: feed remaining tokens to _Parser, let it parse one
+        # _par_expr, then check how far it got.
+        sub_tokens = tokens[pos:]
+        p = _Parser(sub_tokens)
+        body = p._par_expr()
+
+        # How many tokens did the sub-parser consume?
+        consumed = p._pos
+        pos += consumed
+
+        definitions.append(Definition(name_tok.value, body))
+
+    if not definitions:
+        raise ParseError("empty program: expected at least one definition", 0)
+
+    return Program(definitions=tuple(definitions))
+
+
+def pretty_program(program: Program) -> str:
+    """Render a ``Program`` back to equation syntax.
+
+    Single ``_main`` definitions are rendered as bare expressions.
+    """
+    if (
+        len(program.definitions) == 1
+        and program.definitions[0].name == "_main"
+    ):
+        return pretty(program.definitions[0].body)
+
+    lines: list[str] = []
+    for defn in program.definitions:
+        lines.append(f"{defn.name} = {pretty(defn.body)}")
+    return "\n".join(lines)

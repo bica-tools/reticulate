@@ -52,9 +52,11 @@ from reticulate.morphism import (
 from reticulate.parser import (
     Branch,
     Continuation,
+    Definition,
     End,
     Parallel,
     ParseError,
+    Program,
     Rec,
     Select,
     Sequence,
@@ -62,12 +64,15 @@ from reticulate.parser import (
     Var,
     Wait,
     parse,
+    parse_program,
     pretty,
+    pretty_program,
     tokenize,
 )
+from reticulate.resolve import ResolveError, resolve
 from reticulate.product import product_statespace
 from reticulate.sugar import desugar, ensugar
-from reticulate.statespace import StateSpace, build_statespace, truncate_back_edges
+from reticulate.statespace import StateSpace, build_statespace, build_statespace_from_program, truncate_back_edges
 from reticulate.termination import (
     TerminationResult,
     WFParallelResult,
@@ -285,17 +290,24 @@ from reticulate.visualize import (
 __all__ = [
     "__version__",
     "Branch",
+    "build_statespace_from_program",
     "CoverageFrame",
     "CoverageResult",
     "Continuation",
+    "Definition",
     "End",
     "GaloisConnection",
     "DistributivityResult",
     "LatticeResult",
     "Morphism",
     "Parallel",
+    "parse_program",
     "ParseError",
+    "pretty_program",
+    "Program",
     "Rec",
+    "resolve",
+    "ResolveError",
     "Select",
     "Sequence",
     "SessionType",
