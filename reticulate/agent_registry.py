@@ -99,18 +99,66 @@ AGENTS: dict[str, AgentType] = {
         description="Scans programme, proposes next steps",
         transport="stdio",
     ),
+    # --- Missing agents (identified 2026-03-23) ---
+    "Formalizer": AgentType(
+        name="Formalizer",
+        protocol="A2A",
+        session_type="&{formalize: +{definitions: &{typingRules: +{soundness: end}}}}",
+        description="Writes formal syntax, semantics, typing rules BEFORE implementation",
+        transport="Agent()",
+    ),
+    "Benchmarker": AgentType(
+        name="Benchmarker",
+        protocol="A2A",
+        session_type="rec X . &{runBenchmarks: +{allPass: +{report: end}, someFailures: +{analyze: X, accept: end}}}",
+        description="Runs cross-cutting empirical analysis across ALL protocols",
+        transport="Agent()",
+    ),
+    "Connector": AgentType(
+        name="Connector",
+        protocol="A2A",
+        session_type="&{findLinks: +{crossRefs: &{proposeIntersections: +{linked: end}}}}",
+        description="Links steps together, adds cross-references, maintains programme coherence",
+        transport="Agent()",
+    ),
+    "Deployer": AgentType(
+        name="Deployer",
+        protocol="A2A",
+        session_type="rec X . &{build: +{success: &{deploy: +{healthy: end, rollback: X}}, failure: +{fix: X, abort: end}}}",
+        description="Builds web app, deploys to bica-tools.org, packages MCP server",
+        transport="Agent()",
+    ),
+    "Publisher": AgentType(
+        name="Publisher",
+        protocol="A2A",
+        session_type="&{formatForVenue: +{ready: &{submit: +{accepted: end, revise: &{applyRevisions: +{resubmit: end}}}}}}",
+        description="Formats papers for venue submission, manages correspondence",
+        transport="Agent()",
+    ),
 }
 
-# The orchestrator's recursive protocol
+# The orchestrator's full recursive protocol (13 agents)
 ORCHESTRATOR_TYPE = (
-    "rec S . &{investigate: +{report: "
+    "rec S . &{scan: +{proposals: "
+    "&{formalize: +{definitions: "
+    "&{investigate: +{report: "
     "&{implement: +{moduleReady: "
     "&{writeTests: +{testsPass: "
+    "&{runBenchmarks: +{benchmarksDone: "
     "&{writePaper: +{paperReady: "
     "&{writeProofs: +{proofsReady: "
+    "&{findLinks: +{linked: "
     "&{evaluate: +{accepted: +{nextStep: S, allDone: end}, "
-    "needsFixes: &{review: +{fixes: S}}}}}}}}}}}}}}"
+    "needsFixes: &{review: +{fixes: S}}}}}}}}}}}}}}}}}}}}}}"
 )
+
+# Phase classification
+RESEARCH_AGENTS = ("Researcher", "Formalizer")
+BUILD_AGENTS = ("Implementer", "Tester", "Benchmarker")
+WRITE_AGENTS = ("Writer", "Prover")
+QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector")
+MANAGEMENT_AGENTS = ("Supervisor",)
+OPERATIONS_AGENTS = ("Deployer", "Publisher")
 
 
 # ---------------------------------------------------------------------------
