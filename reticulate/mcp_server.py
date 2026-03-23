@@ -480,10 +480,28 @@ def ci_check(type_string: str, baseline: str = "", require_distributive: bool = 
     return result
 
 
+@mcp.tool()
+def supervise_programme() -> str:
+    """Run the research supervision process.
+
+    Scans the full session types research programme, evaluates progress,
+    and proposes: new steps, new tools, new papers, and target venues.
+
+    Returns a supervision report with programme snapshot and prioritized proposals.
+    """
+    t0 = _log_call("supervise_programme", {})
+    from reticulate.supervisor import supervise
+
+    report = supervise()
+    result = report.summary()
+    _log_result("supervise_programme", t0, result)
+    return result
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 10 tools: analyze, test_gen, hasse, invariants, "
-        "conformance, petri_net, coverage, compress_type, analyze_global, ci_check"
+        "Server ready — 11 tools: analyze, test_gen, hasse, invariants, "
+        "conformance, petri_net, coverage, compress_type, analyze_global, ci_check, supervise_programme"
     )
     mcp.run()
     logger.info(
