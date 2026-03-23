@@ -498,10 +498,30 @@ def supervise_programme() -> str:
     return result
 
 
+@mcp.tool()
+def evaluate(step_number: str) -> str:
+    """Evaluate a step's deliverables and grade it.
+
+    Checks: paper exists (5000+ words), companion proofs, implementation
+    module, test suite (20+ tests), tests pass, paper structure.
+
+    Grade: A+ (accepted), A (near-complete), B (gaps), C (major rework), F (broken).
+    A step is ACCEPTED only at A+. Lower grades list required fixes.
+    """
+    t0 = _log_call("evaluate", {"step_number": step_number})
+    from reticulate.evaluator import evaluate_step
+
+    result = evaluate_step(step_number, run_tests=False)
+    output = result.summary()
+    _log_result("evaluate", t0, output)
+    return output
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 11 tools: analyze, test_gen, hasse, invariants, "
-        "conformance, petri_net, coverage, compress_type, analyze_global, ci_check, supervise_programme"
+        "Server ready — 12 tools: analyze, test_gen, hasse, invariants, "
+        "conformance, petri_net, coverage, compress_type, analyze_global, "
+        "ci_check, supervise_programme, evaluate"
     )
     mcp.run()
     logger.info(
