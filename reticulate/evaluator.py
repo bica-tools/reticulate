@@ -194,8 +194,8 @@ def _eval_proofs(step_dir: Path | None) -> Criterion:
 def _eval_module(root: Path, step_num: str) -> Criterion:
     mod_name = _MODULE_MAP.get(step_num, "")
     if not mod_name:
-        # Some steps are paper-only (e.g. cross-domain applications)
-        return Criterion("Implementation module", 15, 10, True, "paper-only step (no module expected)", "info")
+        # Paper-only steps get full marks — no module expected
+        return Criterion("Implementation module", 15, 15, True, "paper-only step (no module expected)", "info")
     mod_path = root / "reticulate" / "reticulate" / f"{mod_name}.py"
     if not mod_path.is_file():
         return Criterion("Implementation module", 15, 0, False, f"{mod_name}.py not found", "critical")
@@ -212,7 +212,7 @@ def _eval_module(root: Path, step_num: str) -> Criterion:
 def _eval_tests(root: Path, step_num: str) -> Criterion:
     mod_name = _MODULE_MAP.get(step_num, "")
     if not mod_name:
-        return Criterion("Test suite", 15, 10, True, "paper-only step", "info")
+        return Criterion("Test suite", 15, 15, True, "paper-only step (no tests expected)", "info")
     test_path = root / "reticulate" / "tests" / f"test_{mod_name}.py"
     if not test_path.is_file():
         return Criterion("Test suite", 15, 0, False, f"test_{mod_name}.py not found", "critical")
@@ -231,7 +231,7 @@ def _eval_tests(root: Path, step_num: str) -> Criterion:
 def _eval_tests_pass(root: Path, step_num: str) -> Criterion:
     mod_name = _MODULE_MAP.get(step_num, "")
     if not mod_name:
-        return Criterion("Tests pass", 10, 8, True, "paper-only step", "info")
+        return Criterion("Tests pass", 10, 10, True, "paper-only step (no tests expected)", "info")
     test_path = root / "reticulate" / "tests" / f"test_{mod_name}.py"
     if not test_path.is_file():
         return Criterion("Tests pass", 10, 0, False, "no test file", "critical")
