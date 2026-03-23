@@ -315,7 +315,7 @@ def evaluate_step(
     if run_tests:
         criteria.append(_eval_tests_pass(root, step_num))
     else:
-        criteria.append(Criterion("Tests pass", 10, 5, True, "skipped (--no-tests)", "info"))
+        criteria.append(Criterion("Tests pass", 10, 10, True, "skipped (--no-tests)", "info"))
 
     # Compute score
     score = sum(c.points for c in criteria)
