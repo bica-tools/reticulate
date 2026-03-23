@@ -318,10 +318,55 @@ def coverage(type_string: str) -> str:
     return result
 
 
+@mcp.tool()
+def compress_type(type_string: str) -> str:
+    """Compress a tree-like session type into an equation system.
+
+    Detects shared (structurally equal) subtrees and factors them
+    into named equations. Shows compression ratio and shared structure.
+    Non-distributive protocols typically have higher compression ratios
+    because their reconvergent branches share subtrees.
+
+    Returns: equation system, compression ratio, shared subtree count.
+    """
+    t0 = _log_call("compress_type", {"type_string": type_string})
+    from reticulate.parser import parse, ParseError, pretty_program
+    from reticulate.compress import analyze_compression
+
+    try:
+        ast = parse(type_string)
+    except ParseError as e:
+        _log_error("compress_type", t0, str(e))
+        return f"Parse error: {e}"
+
+    cr = analyze_compression(ast, min_size=2)
+
+    lines = [
+        f"Session type: {type_string}",
+        f"Original AST size: {cr.original_size} nodes",
+        f"Compressed size: {cr.compressed_size} nodes",
+        f"Compression ratio: {cr.ratio:.2f}x",
+        f"Shared subtrees: {cr.num_shared}",
+        f"Definitions: {cr.num_definitions}",
+        "",
+        "--- Equation form ---",
+        pretty_program(cr.program),
+    ]
+
+    if cr.has_sharing:
+        lines.append("")
+        lines.append(f"Shared names: {', '.join(cr.shared_names)}")
+        lines.append("(Each shared name represents a reconvergence point)")
+
+    result = "\n".join(lines)
+    _log_result("compress_type", t0, result)
+    return result
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 7 tools: analyze, test_gen, hasse, "
-        "invariants, conformance, petri_net, coverage"
+        "Server ready — 8 tools: analyze, test_gen, hasse, "
+        "invariants, conformance, petri_net, coverage, compress_type"
     )
     mcp.run()
     logger.info(

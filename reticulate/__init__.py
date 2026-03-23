@@ -24,6 +24,13 @@ from reticulate.category import (
     universal_morphism,
     universal_morphism_nary,
 )
+from reticulate.compress import (
+    CompressionResult,
+    analyze_compression,
+    ast_size,
+    compress,
+    compression_ratio,
+)
 from reticulate.coverage import (
     CoverageFrame,
     CoverageResult,
