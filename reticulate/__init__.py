@@ -24,6 +24,12 @@ from reticulate.category import (
     universal_morphism,
     universal_morphism_nary,
 )
+from reticulate.ci_gate import (
+    CheckResult,
+    GateConfig,
+    GateResult,
+    ci_gate,
+)
 from reticulate.compress import (
     CompressionResult,
     analyze_compression,

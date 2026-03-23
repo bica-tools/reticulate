@@ -434,10 +434,56 @@ def analyze_global(global_type_string: str) -> str:
     return result
 
 
+@mcp.tool()
+def ci_check(type_string: str, baseline: str = "", require_distributive: bool = False) -> str:
+    """Run CI/CD gate checks on a session type.
+
+    Checks: lattice property, termination, test coverage, and optionally
+    distributivity and backward compatibility (if baseline provided).
+
+    Returns pass/fail verdict with per-check details. Use in CI pipelines
+    to verify protocol correctness on every commit.
+
+    Args:
+        type_string: The session type to check.
+        baseline: Optional previous version for backward compatibility.
+        require_distributive: If true, require distributive lattice.
+    """
+    t0 = _log_call("ci_check", {
+        "type_string": type_string,
+        "baseline": baseline or "(none)",
+        "require_distributive": require_distributive,
+    })
+    from reticulate.parser import parse, ParseError
+    from reticulate.ci_gate import ci_gate, GateConfig
+
+    try:
+        config = GateConfig(
+            require_distributive=require_distributive,
+            require_subtype=bool(baseline),
+            min_transition_coverage=0.9,
+        )
+        gate_result = ci_gate(
+            type_string,
+            baseline=baseline if baseline else None,
+            config=config,
+        )
+    except ParseError as e:
+        _log_error("ci_check", t0, str(e))
+        return f"Parse error: {e}"
+    except Exception as e:
+        _log_error("ci_check", t0, str(e))
+        return f"Error: {e}"
+
+    result = gate_result.summary()
+    _log_result("ci_check", t0, result)
+    return result
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 9 tools: analyze, test_gen, hasse, "
-        "invariants, conformance, petri_net, coverage, compress_type, analyze_global"
+        "Server ready — 10 tools: analyze, test_gen, hasse, invariants, "
+        "conformance, petri_net, coverage, compress_type, analyze_global, ci_check"
     )
     mcp.run()
     logger.info(
