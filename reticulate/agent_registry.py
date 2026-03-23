@@ -163,6 +163,13 @@ AGENTS: dict[str, AgentType] = {
         description="Formats papers for venue submission, manages correspondence",
         transport="Agent()",
     ),
+    "Gatekeeper": AgentType(
+        name="Gatekeeper",
+        protocol="MCP",
+        session_type="&{classify: +{public: end, embargoed: &{checkTimestamp: +{timestamped: end, needsTimestamp: end}}, private: end}}",
+        description="Decides public/embargoed/private per publication-access-policy.md",
+        transport="stdio",
+    ),
 }
 
 # The orchestrator's full recursive protocol (13 agents)
@@ -187,6 +194,7 @@ WRITE_AGENTS = ("Writer", "Prover", "TechWriter")
 QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector")
 MANAGEMENT_AGENTS = ("Supervisor",)
 OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher")
+GOVERNANCE_AGENTS = ("Gatekeeper",)
 
 
 # ---------------------------------------------------------------------------
