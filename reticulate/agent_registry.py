@@ -121,11 +121,39 @@ AGENTS: dict[str, AgentType] = {
         description="Links steps together, adds cross-references, maintains programme coherence",
         transport="Agent()",
     ),
+    "TechWriter": AgentType(
+        name="TechWriter",
+        protocol="A2A",
+        session_type="&{document: +{readme: end, apiDocs: end, changelog: end}}",
+        description="Writes README, API docs, CLAUDE.md, changelogs — not academic papers",
+        transport="Agent()",
+    ),
+    "FrontendDev": AgentType(
+        name="FrontendDev",
+        protocol="A2A",
+        session_type="rec X . &{buildFeature: +{componentReady: &{integrate: +{merged: end, conflicts: X}}, designIssue: +{redesign: X, skip: end}}}",
+        description="Angular components, Material UI, routing, API integration for bica-tools.org",
+        transport="Agent()",
+    ),
+    "BackendDev": AgentType(
+        name="BackendDev",
+        protocol="A2A",
+        session_type="rec X . &{buildEndpoint: +{endpointReady: &{test: +{pass: end, fail: X}}, designIssue: +{redesign: X, skip: end}}}",
+        description="Spring Boot controllers, services, DTOs, database for bica-tools.org",
+        transport="Agent()",
+    ),
+    "CICDEngineer": AgentType(
+        name="CICDEngineer",
+        protocol="A2A",
+        session_type="rec X . &{configurePipeline: +{pipelineReady: &{runPipeline: +{green: end, red: +{fix: X, disable: end}}}}}",
+        description="GitHub Actions, CI gates, deployment pipelines, Docker, packaging",
+        transport="Agent()",
+    ),
     "Deployer": AgentType(
         name="Deployer",
         protocol="A2A",
         session_type="rec X . &{build: +{success: &{deploy: +{healthy: end, rollback: X}}, failure: +{fix: X, abort: end}}}",
-        description="Builds web app, deploys to bica-tools.org, packages MCP server",
+        description="Deploys to bica-tools.org, manages infrastructure, monitors uptime",
         transport="Agent()",
     ),
     "Publisher": AgentType(
@@ -155,10 +183,10 @@ ORCHESTRATOR_TYPE = (
 # Phase classification
 RESEARCH_AGENTS = ("Researcher", "Formalizer")
 BUILD_AGENTS = ("Implementer", "Tester", "Benchmarker")
-WRITE_AGENTS = ("Writer", "Prover")
+WRITE_AGENTS = ("Writer", "Prover", "TechWriter")
 QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector")
 MANAGEMENT_AGENTS = ("Supervisor",)
-OPERATIONS_AGENTS = ("Deployer", "Publisher")
+OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher")
 
 
 # ---------------------------------------------------------------------------
