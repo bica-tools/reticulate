@@ -129,16 +129,17 @@ def _find_root() -> Path:
 # ---------------------------------------------------------------------------
 
 _MODULE_MAP: dict[str, str] = {
-    "1": "statespace", "2": "benchmarks", "3": "lattice", "4": "lattice",
+    "1": "statespace", "3": "lattice", "4": "lattice",
     "5": "lattice", "5b": "product", "6": "enumerate_types", "6b": "termination",
     "7": "subtyping", "8": "duality", "9": "reticular", "10": "endomorphism",
     "11": "global_types", "12": "projection", "13": "recursion", "13a": "recursion",
     "14": "context_free", "21": "petri", "22": "marking_lattice",
     "23": "place_invariants", "24": "coverability", "25": "petri_benchmarks",
     "26": "ccs", "27": "csp", "28": "failures",
-    "29": "distributive", "29a": "distributive", "29b": "gratzer",
+    "29": "lattice", "29a": "lattice", "29b": "lattice",
     "30": "matrix", "70": "mcp_conformance", "70b": "mcp_server",
     "70e": "compress",
+    # Paper-only steps (no dedicated module): 2, 29b, 50-53, 70c, 70d, 104, 155b-168, 200*, 900*
 }
 
 
