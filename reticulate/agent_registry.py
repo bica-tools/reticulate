@@ -185,6 +185,57 @@ AGENTS: dict[str, AgentType] = {
         description="Writes accessible blog posts from research results for bica-tools.org/blog",
         transport="Agent()",
     ),
+    # --- Tutorials ---
+    "Tutor": AgentType(
+        name="Tutor",
+        protocol="A2A",
+        session_type="&{designLesson: +{outline: &{buildInteractive: +{tutorialReady: &{testWithUser: +{effective: end, redesign: end}}}}}}",
+        description="Creates interactive tutorials for bica-tools.org with step-by-step exercises",
+        transport="Agent()",
+    ),
+    # --- Quality: peer review + fact checking ---
+    "PeerReviewer": AgentType(
+        name="PeerReviewer",
+        protocol="A2A",
+        # Intentionally non-distributive: review outcomes reconverge (M₃).
+        # This is semantically correct — accept/revise/reject are coupled
+        # verdicts, not independent dimensions. A paper's fate depends
+        # on the interaction of all criteria, not each in isolation.
+        session_type="&{reviewPaper: +{accept: end, minorRevisions: +{listMinor: end}, majorRevisions: +{listMajor: end}, reject: +{listReasons: end}}}",
+        description="Simulates venue peer review: contribution clarity, proof rigour, evaluation sufficiency",
+        transport="Agent()",
+    ),
+    "FactChecker": AgentType(
+        name="FactChecker",
+        protocol="MCP",
+        session_type="rec X . &{verifyClaim: +{confirmed: +{nextClaim: X, allChecked: end}, refuted: +{reportError: end}}}",
+        description="Verifies numerical claims in papers match actual tool output on current benchmarks",
+        transport="stdio",
+    ),
+    # --- Research: literature monitoring ---
+    "LiteratureScout": AgentType(
+        name="LiteratureScout",
+        protocol="A2A",
+        session_type="&{searchLiterature: +{findings: &{assessRelevance: +{relevant: +{updateRelatedWork: end}, notRelevant: end}}}}",
+        description="Monitors arXiv/DBLP/Scholar for related work, alerts on overlaps, updates citations",
+        transport="Agent()",
+    ),
+    # --- Write: bibliography management ---
+    "Archivist": AgentType(
+        name="Archivist",
+        protocol="MCP",
+        session_type="&{checkBibliography: +{consistent: end, issues: +{listIssues: end}}}",
+        description="Maintains shared-new-refs.bib, ensures citation consistency across all papers",
+        transport="stdio",
+    ),
+    # --- Operations: community ---
+    "CommunityManager": AgentType(
+        name="CommunityManager",
+        protocol="A2A",
+        session_type="rec X . &{triageIssue: +{respond: +{resolved: +{nextIssue: X, queueEmpty: end}, needsEscalation: +{escalate: X}}, defer: X}}",
+        description="Manages GitHub issues, PRs, discussions, contributor onboarding, CONTRIBUTING.md",
+        transport="Agent()",
+    ),
 }
 
 # The orchestrator's full recursive protocol (13 agents)
@@ -203,14 +254,14 @@ ORCHESTRATOR_TYPE = (
 )
 
 # Phase classification
-RESEARCH_AGENTS = ("Researcher", "Formalizer")
+RESEARCH_AGENTS = ("Researcher", "Formalizer", "LiteratureScout")
 BUILD_AGENTS = ("Implementer", "Tester", "Benchmarker")
-WRITE_AGENTS = ("Writer", "Prover", "TechWriter")
-QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector")
+WRITE_AGENTS = ("Writer", "Prover", "TechWriter", "Archivist")
+QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector", "PeerReviewer", "FactChecker")
 MANAGEMENT_AGENTS = ("Supervisor",)
-OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher")
+OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher", "CommunityManager")
 GOVERNANCE_AGENTS = ("Gatekeeper",)
-EDITORIAL_AGENTS = ("Editor", "BlogWriter")
+EDITORIAL_AGENTS = ("Editor", "BlogWriter", "Tutor")
 
 
 # ---------------------------------------------------------------------------
