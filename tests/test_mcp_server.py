@@ -15,7 +15,6 @@ mcp_available = True
 try:
     from reticulate.mcp_server import (
         analyze,
-        test_gen,
         hasse,
         invariants,
         petri_net,
@@ -24,6 +23,7 @@ try:
         analyze_global,
         ci_check,
     )
+    from reticulate.mcp_server import test_gen as mcp_test_gen
 except ImportError:
     mcp_available = False
 
@@ -61,7 +61,8 @@ class TestAnalyze:
 
     def test_two_branch_state_count(self) -> None:
         result = analyze(TWO_BRANCH)
-        assert "States: 3" in result
+        # &{a: end, b: end} has 2 states: top and end (bottom)
+        assert "States: 2" in result
 
     def test_recursive_type(self) -> None:
         result = analyze(RECURSIVE)
@@ -86,15 +87,15 @@ class TestAnalyze:
 
 class TestTestGen:
     def test_generates_java_source(self) -> None:
-        result = test_gen(TWO_BRANCH)
+        result = mcp_test_gen(TWO_BRANCH)
         assert "class" in result or "void" in result
 
     def test_custom_class_name(self) -> None:
-        result = test_gen(TWO_BRANCH, class_name="MyProto")
+        result = mcp_test_gen(TWO_BRANCH, class_name="MyProto")
         assert "MyProto" in result
 
     def test_parse_error(self) -> None:
-        result = test_gen(INVALID)
+        result = mcp_test_gen(INVALID)
         assert "Parse error" in result
 
 
