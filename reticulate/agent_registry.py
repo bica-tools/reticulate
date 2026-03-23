@@ -170,6 +170,21 @@ AGENTS: dict[str, AgentType] = {
         description="Decides public/embargoed/private per publication-access-policy.md",
         transport="stdio",
     ),
+    # --- Editorial team ---
+    "Editor": AgentType(
+        name="Editor",
+        protocol="MCP",
+        session_type="&{selectTopic: +{approved: &{assignWriter: +{scheduled: end}}, deferred: end, rejected: end}}",
+        description="Editorial strategy, topic selection, calendar, tone/voice per editorial-concept.md",
+        transport="stdio",
+    ),
+    "BlogWriter": AgentType(
+        name="BlogWriter",
+        protocol="A2A",
+        session_type="rec X . &{writeDraft: +{draftReady: &{editorialReview: +{approved: end, revisions: &{revise: X}}}}}",
+        description="Writes accessible blog posts from research results for bica-tools.org/blog",
+        transport="Agent()",
+    ),
 }
 
 # The orchestrator's full recursive protocol (13 agents)
@@ -195,6 +210,7 @@ QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector")
 MANAGEMENT_AGENTS = ("Supervisor",)
 OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher")
 GOVERNANCE_AGENTS = ("Gatekeeper",)
+EDITORIAL_AGENTS = ("Editor", "BlogWriter")
 
 
 # ---------------------------------------------------------------------------
