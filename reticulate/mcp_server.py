@@ -363,10 +363,81 @@ def compress_type(type_string: str) -> str:
     return result
 
 
+@mcp.tool()
+def analyze_global(global_type_string: str) -> str:
+    """Analyze a multiparty global session type.
+
+    Parses a global type, extracts roles, builds the global state space,
+    checks lattice properties, and projects onto each role to produce
+    local (binary) session types.
+
+    Global type syntax:
+        sender -> receiver : { label1: G1, label2: G2 }
+        G1 || G2        (parallel)
+        rec X . G       (recursion)
+        end             (terminated)
+
+    Example: Client -> Server : {request: Server -> Client : {response: end}}
+
+    Returns: roles, global state space analysis, and per-role local types
+    with their individual lattice properties.
+    """
+    t0 = _log_call("analyze_global", {"global_type_string": global_type_string})
+    from reticulate.global_types import parse_global, roles, build_global_statespace, pretty_global
+    from reticulate.projection import project_all
+    from reticulate.parser import pretty
+    from reticulate.statespace import build_statespace
+    from reticulate.lattice import check_lattice, check_distributive
+
+    try:
+        g = parse_global(global_type_string)
+    except Exception as e:
+        _log_error("analyze_global", t0, str(e))
+        return f"Parse error: {e}"
+
+    all_roles = sorted(roles(g))
+    gss = build_global_statespace(g)
+    glr = check_lattice(gss)
+    gdist = check_distributive(gss)
+
+    lines = [
+        f"Global type: {global_type_string[:80]}",
+        f"Roles: {', '.join(all_roles)}",
+        f"Global states: {len(gss.states)}",
+        f"Global transitions: {len(gss.transitions)}",
+        f"Global is lattice: {glr.is_lattice}",
+        f"Global distributive: {gdist.is_distributive}",
+        "",
+        "--- Per-role projections (local binary types) ---",
+    ]
+
+    try:
+        local_types = project_all(g)
+        for role in all_roles:
+            local = local_types.get(role)
+            if local is None:
+                lines.append(f"  {role}: (not involved)")
+                continue
+            local_str = pretty(local)
+            lss = build_statespace(local)
+            llr = check_lattice(lss)
+            ldist = check_distributive(lss)
+            lines.append(f"  {role}:")
+            lines.append(f"    Local type: {local_str[:80]}")
+            lines.append(f"    States: {len(lss.states)}, Transitions: {len(lss.transitions)}")
+            lines.append(f"    Lattice: {llr.is_lattice}, Distributive: {ldist.is_distributive}")
+    except Exception as e:
+        lines.append(f"  Projection error: {e}")
+
+    result = "\n".join(lines)
+    _log_result("analyze_global", t0, result)
+    return result
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 8 tools: analyze, test_gen, hasse, "
-        "invariants, conformance, petri_net, coverage, compress_type"
+        "Server ready — 9 tools: analyze, test_gen, hasse, "
+        "invariants, conformance, petri_net, coverage, compress_type, analyze_global"
     )
     mcp.run()
     logger.info(
