@@ -170,6 +170,13 @@ AGENTS: dict[str, AgentType] = {
         description="Maintains living publication list, maps results to venues, tracks deadlines",
         transport="stdio",
     ),
+    "SubmissionStrategist": AgentType(
+        name="SubmissionStrategist",
+        protocol="MCP",
+        session_type="&{checkPlan: +{consistent: end, issue: +{citationCycle: end, dualSubmission: end, missingDependency: end, orderingProblem: end}}}",
+        description="Checks citation dependency ordering, venue overlap, dual submission rules, self-containedness",
+        transport="stdio",
+    ),
     "Gatekeeper": AgentType(
         name="Gatekeeper",
         protocol="MCP",
