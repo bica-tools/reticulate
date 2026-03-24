@@ -288,6 +288,16 @@ from reticulate.coequalizer import (
     is_coequalizer,
     quotient_lattice,
 )
+from reticulate.nary_parallel import (
+    NaryParallelResult,
+    all_nestings,
+    catalan,
+    check_nesting_invariance,
+    flatten_parallel,
+    is_flat_parallel,
+    nest_parallel,
+    nest_parallel_left,
+)
 from reticulate.monoidal import (
     AssociativityResult,
     CoherenceResult,
@@ -936,4 +946,12 @@ __all__ = [
     "check_monoidal_structure",
     "check_monoidal_unit",
     "check_symmetry",
+    "NaryParallelResult",
+    "all_nestings",
+    "catalan",
+    "check_nesting_invariance",
+    "flatten_parallel",
+    "is_flat_parallel",
+    "nest_parallel",
+    "nest_parallel_left",
 ]
