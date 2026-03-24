@@ -209,13 +209,22 @@ def _generate_papers(results: list[PublishableResult]) -> list[PaperProposal]:
         priority="medium-term", deadline="~Oct 2026", cites=("F1",), status="planned",
     ))
 
+    # ── FOUNDATION: ICE preview ──
+    papers.append(PaperProposal(
+        id="F0", title="Session Type State Spaces Form Lattices",
+        layer="foundation", steps=("3", "4", "5", "5b", "6"),
+        contribution="Workshop preview of the Reticulate Theorem: every well-formed session type state space forms a bounded lattice. 105 benchmarks validated.",
+        venues=("ICE 2026",), format="workshop 8-15pp EPTCS",
+        priority="immediate", deadline="Apr 2, 2026", cites=(), status="drafting",
+    ))
+
     # ── CONSEQUENCE ──
     papers.append(PaperProposal(
         id="M1", title="Subtyping is Embedding: A Lattice-Theoretic View of Session Type Refinement",
         layer="consequence", steps=("7",),
         contribution="Gay-Hole width subtyping corresponds to lattice embedding between reticulates.",
-        venues=("ICE 2026", "ICTAC 2026", "APLAS 2026"), format="workshop 8-15pp",
-        priority="immediate", deadline="Apr 2, 2026", cites=("F1",), status="drafting",
+        venues=("ICTAC 2026", "APLAS 2026"), format="conference 12-15pp",
+        priority="short-term", deadline="Jun 15, 2026", cites=("F0", "F1"), status="planned",
     ))
     papers.append(PaperProposal(
         id="M2", title="Duality as Lattice Involution",
