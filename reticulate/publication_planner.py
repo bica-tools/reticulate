@@ -537,7 +537,7 @@ def main(argv: list[str] | None = None) -> None:
             "results": len(plan.results),
             "papers": [{"id": p.id, "title": p.title, "layer": p.layer,
                         "venues": list(p.venues), "priority": p.priority,
-                        "status": p.status} for p in plan.papers],
+                        "deadline": p.deadline, "status": p.status} for p in plan.papers],
             "unmapped": list(plan.unmapped_results),
         }
         print(json.dumps(output, indent=2))
