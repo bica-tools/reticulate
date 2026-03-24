@@ -212,6 +212,15 @@ from reticulate.realizability import (
     find_obstructions,
     generate_non_realizable,
 )
+from reticulate.buffered_channel import (
+    BufferedChannelResult,
+    GrowthAnalysis,
+    GrowthPoint,
+    build_buffered_statespace,
+    buffer_growth_analysis,
+    check_buffer_safety,
+    optimal_buffer_size,
+)
 from reticulate.async_channel import (
     AsyncChannelResult,
     build_async_channel,
@@ -278,6 +287,18 @@ from reticulate.coequalizer import (
     congruence_closure,
     is_coequalizer,
     quotient_lattice,
+)
+from reticulate.monoidal import (
+    AssociativityResult,
+    CoherenceResult,
+    MonoidalResult,
+    SymmetryResult,
+    UnitResult,
+    check_associativity,
+    check_coherence,
+    check_monoidal_structure,
+    check_monoidal_unit,
+    check_symmetry,
 )
 from reticulate.tensor import (
     CoupledTensorResult,
@@ -354,6 +375,16 @@ from reticulate.place_invariants import (
     check_weighted_token_conservation,
     compute_incidence_matrix,
     compute_place_invariants,
+)
+from reticulate.st_invariants import (
+    SInvariant,
+    TInvariant,
+    StructuralInvariantResult,
+    analyze_structural_invariants,
+    compute_s_invariants,
+    compute_t_invariants,
+    verify_s_invariant,
+    verify_t_invariant,
 )
 from reticulate.coverability import (
     CoverabilityNode,
@@ -473,6 +504,16 @@ from reticulate.monitor import (
     generate_express_middleware,
     generate_java_monitor,
     generate_python_monitor,
+)
+from reticulate.spectral import (
+    ClusteringResult,
+    SimilarityResult,
+    SpectralCluster,
+    SpectralFeatures,
+    cluster_benchmarks,
+    find_similar,
+    spectral_distance,
+    spectral_features,
 )
 from reticulate.visualize import (
     dot_source,
@@ -641,6 +682,13 @@ __all__ = [
     "is_galois_pair",
     "label_closure",
     "state_closure",
+    "BufferedChannelResult",
+    "GrowthAnalysis",
+    "GrowthPoint",
+    "build_buffered_statespace",
+    "buffer_growth_analysis",
+    "check_buffer_safety",
+    "optimal_buffer_size",
     "AsyncChannelResult",
     "build_async_channel",
     "build_async_statespace",
@@ -725,6 +773,14 @@ __all__ = [
     "check_weighted_token_conservation",
     "compute_incidence_matrix",
     "compute_place_invariants",
+    "SInvariant",
+    "TInvariant",
+    "StructuralInvariantResult",
+    "analyze_structural_invariants",
+    "compute_s_invariants",
+    "compute_t_invariants",
+    "verify_s_invariant",
+    "verify_t_invariant",
     "CoverabilityNode",
     "CoverabilityResult",
     "analyze_coverability",
@@ -849,6 +905,14 @@ __all__ = [
     "generate_express_middleware",
     "generate_java_monitor",
     "generate_python_monitor",
+    "ClusteringResult",
+    "SimilarityResult",
+    "SpectralCluster",
+    "SpectralFeatures",
+    "cluster_benchmarks",
+    "find_similar",
+    "spectral_distance",
+    "spectral_features",
     "APIContract",
     "OpenAPIEndpoint",
     "TraceValidationResult",
@@ -862,4 +926,14 @@ __all__ = [
     "session_type_to_openapi_extension",
     "validate_api_trace",
     "webhook_subscription_flow",
+    "AssociativityResult",
+    "CoherenceResult",
+    "MonoidalResult",
+    "SymmetryResult",
+    "UnitResult",
+    "check_associativity",
+    "check_coherence",
+    "check_monoidal_structure",
+    "check_monoidal_unit",
+    "check_symmetry",
 ]
