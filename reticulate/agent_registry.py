@@ -170,6 +170,13 @@ AGENTS: dict[str, AgentType] = {
         description="Maintains living publication list, maps results to venues, tracks deadlines",
         transport="stdio",
     ),
+    "CopyEditor": AgentType(
+        name="CopyEditor",
+        protocol="A2A",
+        session_type="rec X . &{polish: +{flawless: end, issues: &{fix: X}}}",
+        description="Camera-ready polish: clarity, grammar, formatting, diagrams, references. Runs AFTER Strong Accept.",
+        transport="Agent()",
+    ),
     "SubmissionStrategist": AgentType(
         name="SubmissionStrategist",
         protocol="MCP",
