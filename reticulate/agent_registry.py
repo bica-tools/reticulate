@@ -163,6 +163,13 @@ AGENTS: dict[str, AgentType] = {
         description="Formats papers for venue submission, manages correspondence",
         transport="Agent()",
     ),
+    "PublicationPlanner": AgentType(
+        name="PublicationPlanner",
+        protocol="MCP",
+        session_type="&{scanResults: +{planGenerated: &{matchVenues: +{planReady: end}}}}",
+        description="Maintains living publication list, maps results to venues, tracks deadlines",
+        transport="stdio",
+    ),
     "Gatekeeper": AgentType(
         name="Gatekeeper",
         protocol="MCP",
