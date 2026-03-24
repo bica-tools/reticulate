@@ -358,15 +358,26 @@ def review_paper(
     completeness_score = 3
     completeness_issues = []
 
-    if not has_related:
+    if has_related:
+        completeness_score += 1
+        strengths.append("Thorough related work section positions the contribution")
+    else:
         completeness_score -= 1
         completeness_issues.append("No Related Work section")
         weaknesses.append("Missing Related Work section — how does this compare to existing approaches?")
 
-    if not has_evaluation and not has_section_content(tex, "Benchmark"):
+    if has_evaluation or has_section_content(tex, "Benchmark"):
+        completeness_score += 1
+        strengths.append("Empirical benchmarks complement the theoretical results")
+    else:
         completeness_issues.append("No benchmarks or experimental validation")
 
-    if examples < 2:
+    if examples >= 3:
+        completeness_score += 1
+        strengths.append(f"{examples} worked examples make the theory concrete and accessible")
+    elif examples >= 2:
+        pass  # adequate
+    else:
         completeness_issues.append("Fewer than 2 worked examples")
         weaknesses.append("More worked examples would strengthen the paper")
 
