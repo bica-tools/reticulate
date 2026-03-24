@@ -238,7 +238,14 @@ AGENTS: dict[str, AgentType] = {
         name="LiteratureScout",
         protocol="A2A",
         session_type="&{searchLiterature: +{findings: &{assessRelevance: +{relevant: +{updateRelatedWork: end}, notRelevant: end}}}}",
-        description="Monitors arXiv/DBLP/Scholar for related work, alerts on overlaps, updates citations",
+        description="Searches arXiv/DBLP/Semantic Scholar APIs for related work, deduplicates by title similarity, compares against .bib entries to find new papers (literature_scout.py)",
+        transport="Agent()",
+    ),
+    "Librarian": AgentType(
+        name="Librarian",
+        protocol="A2A",
+        session_type="&{downloadReferences: +{downloaded: &{organize: +{organized: end}}, someFailed: +{checkMissing: end}}}",
+        description="Downloads and organizes reference PDFs from DOI/Unpaywall/arXiv/Semantic Scholar, manages {citationkey}.pdf naming (librarian.py)",
         transport="Agent()",
     ),
     # --- Write: bibliography management ---
@@ -277,7 +284,7 @@ ORCHESTRATOR_TYPE = (
 # Phase classification
 RESEARCH_AGENTS = ("Researcher", "Formalizer", "LiteratureScout")
 BUILD_AGENTS = ("Implementer", "Tester", "Benchmarker")
-WRITE_AGENTS = ("Writer", "Prover", "TechWriter", "Archivist")
+WRITE_AGENTS = ("Writer", "Prover", "TechWriter", "Archivist", "Librarian")
 QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector", "PeerReviewer", "FactChecker")
 MANAGEMENT_AGENTS = ("Supervisor",)
 OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher", "CommunityManager")
