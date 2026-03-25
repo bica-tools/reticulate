@@ -264,6 +264,13 @@ AGENTS: dict[str, AgentType] = {
         description="Manages GitHub issues, PRs, discussions, contributor onboarding, CONTRIBUTING.md",
         transport="Agent()",
     ),
+    "VenueMatcher": AgentType(
+        name="VenueMatcher",
+        protocol="MCP",
+        session_type="&{extractKeywords: +{keywords: &{rankVenues: +{rankings: end}}}}",
+        description="Evaluates paper-venue fit using keyword analysis and Jaccard similarity (venue_matcher.py)",
+        transport="stdio",
+    ),
 }
 
 # The orchestrator's full recursive protocol with parallel constructors.
