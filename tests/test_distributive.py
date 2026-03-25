@@ -258,8 +258,9 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 57/79 distributive, 20/79 non-modular (N₅), 2 modular
-        assert n_bool + n_dist == 57, (
-            f"Expected 57 distributive, got {n_bool + n_dist}"
+        # Empirical result: 83/105 distributive (35 boolean + 48 distributive),
+        # 20/105 lattice-only (non-distributive), 2/105 modular
+        assert n_bool + n_dist == 83, (
+            f"Expected 83 distributive, got {n_bool + n_dist}"
         )
         assert n_lat == 20, f"Expected 20 lattice-only, got {n_lat}"
