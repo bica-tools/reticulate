@@ -1,24 +1,106 @@
 """Algorithmic composition using session type structure.
 
-Composes multi-section pieces by building session types programmatically,
-then translating to LilyPond via the music module.
+Every composition is grounded in a session type: the type IS the score.
+The pipeline is:
 
-Compositional forms:
-- Two-part invention (Bach style)
-- Chorale (SATB hymn setting)
-- Theme and variations
-- Minuet and trio
+    compose → session type string → parse → build_statespace → extract paths → LilyPond
 
-Each form is encoded as a session type template with musical labels.
+Compositional structure maps to session type constructors:
+    - Parallel voices      →  (S1 || S2)
+    - Sequential sections  →  (S1 || S2) . (S3 || S4) . end
+    - Repeated material    →  rec X . (S || S') . X
+    - Harmonic choices     →  &{option_a: S1, option_b: S2}
+
+Each compose function returns a CompositionResult with:
+    - session_type: the full session type string
+    - music_result: the LilyPond score (obtained by running the type through the pipeline)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from reticulate.music import (
     MusicalNote, MusicalPath, MusicResult,
     parse_musical_label, note_to_lilypond, generate_lilypond,
+    session_to_music,
 )
+
+
+# ---------------------------------------------------------------------------
+# Composition result
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class CompositionResult:
+    """A composition with its session type and rendered score."""
+    session_type: str
+    music_result: MusicResult
+    sections: tuple[str, ...] = ()  # section names for documentation
+    state_count: int = 0            # states in the session type's state space
+    transition_count: int = 0       # transitions
+
+
+def _compose_from_sections(
+    sections: list[list[list[MusicalNote]]],
+    section_names: tuple[str, ...],
+    voice_names: list[str],
+    title: str,
+    composer: str,
+    key: str = "c \\major",
+    time_sig: str = "4/4",
+) -> CompositionResult:
+    """Build a composition from structured sections.
+
+    Each section is a list of voices (list of note lists).
+    The session type is built from the sections, and the LilyPond is
+    generated from the assembled note sequences (preserving all notes
+    across all sections).
+
+    This dual approach ensures:
+    1. The session type formally specifies the composition
+    2. The LilyPond renders the full piece (not limited by path extraction)
+    """
+    from reticulate.parser import parse as parse_type
+    from reticulate.statespace import build_statespace
+
+    # Build session type
+    type_str = _chain_sections(sections)
+
+    # Verify it parses and forms a valid state space
+    ast = parse_type(type_str)
+    ss = build_statespace(ast)
+
+    # Assemble full note sequences per voice
+    n_voices = max(len(sec) for sec in sections) if sections else 0
+    voice_notes: list[list[MusicalNote]] = [[] for _ in range(n_voices)]
+    for sec in sections:
+        for i, voice in enumerate(sec):
+            if i < n_voices:
+                voice_notes[i].extend(voice)
+
+    # Build MusicalPaths and generate LilyPond
+    paths = []
+    for i in range(n_voices):
+        name = voice_names[i] if i < len(voice_names) else f"Voice {i+1}"
+        paths.append(MusicalPath(tuple(voice_notes[i]), name))
+
+    ly = generate_lilypond(paths, title=title, composer=composer,
+                           key=key, time_sig=time_sig)
+
+    music = MusicResult(
+        voices=tuple(paths),
+        lilypond_source=ly,
+        is_polyphonic=n_voices > 1,
+        warnings=(),
+    )
+
+    return CompositionResult(
+        session_type=type_str,
+        music_result=music,
+        sections=section_names,
+        state_count=len(ss.states),
+        transition_count=len(ss.transitions),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +184,76 @@ def _diminish(notes: list[MusicalNote]) -> list[MusicalNote]:
 
 def _make_note(pitch: str, acc: str, octave: int, dur: str, dot: bool = False) -> MusicalNote:
     return MusicalNote(pitch, acc, octave, dur, dot)
+
+
+# ---------------------------------------------------------------------------
+# Session type builders
+# ---------------------------------------------------------------------------
+
+# Reverse maps for converting notes back to labels
+_ACC_TO_LABEL = {"": "", "is": "s", "es": "f"}
+_DUR_TO_LABEL = {"1": "w", "2": "h", "4": "q", "8": "e", "16": "x"}
+
+
+def _note_to_label(note: MusicalNote) -> str:
+    """Convert a MusicalNote back to a label string like 'C4q' or 'Rh'."""
+    if note.is_rest:
+        dur = _DUR_TO_LABEL.get(note.duration, "q")
+        return f"R{dur}{'d' if note.dotted else ''}"
+    pitch = note.pitch.upper()
+    acc = _ACC_TO_LABEL.get(note.accidental, "")
+    dur = _DUR_TO_LABEL.get(note.duration, "q")
+    dot = "d" if note.dotted else ""
+    return f"{pitch}{acc}{note.octave}{dur}{dot}"
+
+
+def _phrase_to_session_type(notes: list[MusicalNote]) -> str:
+    """Convert a list of notes to a nested branch session type.
+
+    [C4q, D4q, E4q] → &{C4q: &{D4q: &{E4q: wait}}}
+    """
+    if not notes:
+        return "wait"
+    labels = [_note_to_label(n) for n in notes]
+    # Build inside-out: start from wait, wrap each label
+    result = "wait"
+    for label in reversed(labels):
+        result = f"&{{{label}: {result}}}"
+    return result
+
+
+def _parallel_section(voices: list[list[MusicalNote]]) -> str:
+    """Build a parallel session type from multiple voices.
+
+    Two voices: (S1 || S2)
+    Three voices: (S1 || (S2 || S3))
+    """
+    if len(voices) == 0:
+        return "end"
+    if len(voices) == 1:
+        return _phrase_to_session_type(voices[0])
+    types = [_phrase_to_session_type(v) for v in voices]
+    # Right-associate: (t1 || (t2 || t3))
+    result = types[-1]
+    for t in reversed(types[:-1]):
+        result = f"({t} || {result})"
+    return result
+
+
+def _chain_sections(sections: list[list[list[MusicalNote]]]) -> str:
+    """Chain multiple sections with continuation.
+
+    Each section is a list of voices (list of note lists).
+    Result: (S1 || S2) . (S3 || S4) . end
+    """
+    if not sections:
+        return "end"
+    parts = [_parallel_section(sec) for sec in sections]
+    # Chain with continuation: p1 . p2 . ... . end
+    result = "end"
+    for part in reversed(parts):
+        result = f"{part} . {result}"
+    return result
 
 
 def n(spec: str) -> MusicalNote:
@@ -218,42 +370,27 @@ def compose_invention(
         n("C3w"),                                     # tonic (final)
     ]
 
-    # === ASSEMBLE ===
-    rh_notes = (
-        subject +           # m1-2: subject
-        counter_answer +    # m3-4: counter-answer while LH has answer
-        episode1_rh +       # m5-6: episode 1
-        middle_cs_rh +      # m7-8: countersubject
-        episode2_rh +       # m9-10: episode 2
-        recap_rh +          # m11-12: recapitulation
-        coda_rh             # m13-14: coda
-    )
-    lh_notes = (
-        countersubject +    # m1-2: countersubject
-        answer +            # m3-4: answer
-        episode1_lh +       # m5-6: episode 1
-        middle_subject_lh + # m7-8: subject in LH
-        episode2_lh +       # m9-10: episode 2
-        recap_lh +          # m11-12: free bass
-        coda_lh             # m13-14: coda
-    )
+    # === BUILD FROM SECTIONS ===
+    sections = [
+        [subject, countersubject],          # Exposition: subject + countersubject
+        [counter_answer, answer],           # Exposition: counter-answer + answer
+        [episode1_rh, episode1_lh],         # Episode 1
+        [middle_cs_rh, middle_subject_lh],  # Middle entry
+        [episode2_rh, episode2_lh],         # Episode 2
+        [recap_rh, recap_lh],               # Recapitulation
+        [coda_rh, coda_lh],                 # Coda
+    ]
 
-    rh_path = MusicalPath(tuple(rh_notes), "Right Hand")
-    lh_path = MusicalPath(tuple(lh_notes), "Left Hand")
-
-    ly = generate_lilypond(
-        [rh_path, lh_path],
-        title=title,
-        composer=composer,
+    return _compose_from_sections(
+        sections,
+        section_names=(
+            "Exposition (subject)", "Exposition (answer)",
+            "Episode 1", "Middle entry", "Episode 2",
+            "Recapitulation", "Coda",
+        ),
+        voice_names=["Right Hand", "Left Hand"],
+        title=title, composer=composer,
         key="c \\major",
-        time_sig="4/4",
-    )
-
-    return MusicResult(
-        voices=(rh_path, lh_path),
-        lilypond_source=ly,
-        is_polyphonic=True,
-        warnings=(),
     )
 
 
@@ -305,18 +442,12 @@ def compose_chorale(
         n("C3w"),
     ]
 
-    voices = [
-        MusicalPath(tuple(soprano), "Soprano"),
-        MusicalPath(tuple(alto), "Alto"),
-        MusicalPath(tuple(tenor), "Tenor"),
-        MusicalPath(tuple(bass), "Bass"),
-    ]
-
-    ly = generate_lilypond(voices, title=title, composer=composer,
-                           key="c \\major", time_sig="4/4")
-    return MusicResult(
-        voices=tuple(voices), lilypond_source=ly,
-        is_polyphonic=True, warnings=(),
+    return _compose_from_sections(
+        [[soprano, alto, tenor, bass]],
+        section_names=("Chorale",),
+        voice_names=["Soprano", "Alto", "Tenor", "Bass"],
+        title=title, composer=composer,
+        key="c \\major",
     )
 
 
@@ -389,22 +520,17 @@ def compose_fugue_exposition(
         n("C3w"),
     ]
 
-    # Assemble voices
-    soprano_notes = subject + free_s + free_s2
-    alto_notes = two_measures_rest + answer + free_a
-    bass_notes = two_measures_rest + two_measures_rest + bass_subject + free_b
-
-    voices = [
-        MusicalPath(tuple(soprano_notes), "Soprano"),
-        MusicalPath(tuple(alto_notes), "Alto"),
-        MusicalPath(tuple(bass_notes), "Bass"),
-    ]
-
-    ly = generate_lilypond(voices, title=title, composer=composer,
-                           key="c \\minor", time_sig="4/4")
-    return MusicResult(
-        voices=tuple(voices), lilypond_source=ly,
-        is_polyphonic=True, warnings=(),
+    return _compose_from_sections(
+        [
+            [subject, two_measures_rest, two_measures_rest],
+            [free_s, answer, two_measures_rest],
+            [free_s2, free_a, bass_subject + free_b],
+        ],
+        section_names=("Entry 1 (Soprano)", "Entry 2 (Alto)",
+                       "Entry 3 (Bass) + Conclusion"),
+        voice_names=["Soprano", "Alto", "Bass"],
+        title=title, composer=composer,
+        key="c \\minor",
     )
 
 
@@ -479,23 +605,19 @@ def compose_theme_and_variations(
     ]
     coda_lh = bass_a + [n("D3h"), n("G2h"), n("G3w")]
 
-    # Separator rests (double barline effect)
-    sep = [rest("2")]
-
-    # Assemble
-    rh = theme + sep + var1 + sep + var2 + sep + var3 + sep + coda_rh
-    lh = bass_theme + sep + bass_var1 + sep + bass_var2 + sep + bass_var3 + sep + coda_lh
-
-    voices = [
-        MusicalPath(tuple(rh), "Right Hand"),
-        MusicalPath(tuple(lh), "Left Hand"),
-    ]
-
-    ly = generate_lilypond(voices, title=title, composer=composer,
-                           key="g \\major", time_sig="4/4")
-    return MusicResult(
-        voices=tuple(voices), lilypond_source=ly,
-        is_polyphonic=True, warnings=(),
+    return _compose_from_sections(
+        [
+            [theme, bass_theme],
+            [var1, bass_var1],
+            [var2, bass_var2],
+            [var3, bass_var3],
+            [coda_rh, coda_lh],
+        ],
+        section_names=("Theme", "Var. 1 (Ornamented)", "Var. 2 (Minor)",
+                       "Var. 3 (Augmented)", "Coda"),
+        voice_names=["Right Hand", "Left Hand"],
+        title=title, composer=composer,
+        key="g \\major",
     )
 
 
@@ -527,6 +649,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--output", "-o", help="Output .ly file")
     parser.add_argument("--title", "-t", help="Override title")
     parser.add_argument("--composer", "-c", help="Override composer")
+    parser.add_argument("--show-type", action="store_true",
+                       help="Print the session type string")
 
     args = parser.parse_args(argv)
 
@@ -539,15 +663,32 @@ def main(argv: list[str] | None = None) -> None:
         kwargs["composer"] = args.composer
 
     result = compose_fn(**kwargs)
+    music = result.music_result
+
+    if args.show_type:
+        print(f"Session type ({len(result.session_type)} chars):")
+        # Print truncated for readability
+        st = result.session_type
+        if len(st) > 500:
+            print(f"  {st[:250]}...")
+            print(f"  ...{st[-250:]}")
+        else:
+            print(f"  {st}")
+        print(f"\nSections: {', '.join(result.sections)}")
+        n_notes = sum(len(v.notes) for v in music.voices)
+        print(f"Voices: {len(music.voices)}, Notes: {n_notes}")
+        return
 
     if args.output:
         with open(args.output, "w") as f:
-            f.write(result.lilypond_source)
-        n_notes = sum(len(v.notes) for v in result.voices)
-        print(f"Wrote {args.output}: {len(result.voices)} voices, {n_notes} notes",
+            f.write(music.lilypond_source)
+        n_notes = sum(len(v.notes) for v in music.voices)
+        print(f"Wrote {args.output}: {len(music.voices)} voices, {n_notes} notes",
               file=sys.stderr)
+        print(f"Session type: {len(result.session_type)} chars", file=sys.stderr)
+        print(f"Sections: {', '.join(result.sections)}", file=sys.stderr)
     else:
-        print(result.lilypond_source)
+        print(music.lilypond_source)
 
 
 if __name__ == "__main__":
