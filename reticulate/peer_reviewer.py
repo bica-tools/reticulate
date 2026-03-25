@@ -260,11 +260,10 @@ def review_paper(
         soundness_score += 1
         strengths.append("Every theorem has a proof")
 
-    # Path to 5: mechanised verification + all proofs detailed
-    has_mechanisation = bool(re.search(r"[Ll]ean|[Cc]oq|[Aa]gda|[Ii]sabelle|mechanis", tex))
-    if has_mechanisation and empty_proofs == 0 and unproved == 0 and total_thms >= 5:
+    # Path to 5: ALL proofs substantial (none short) + many theorems
+    if empty_proofs == 0 and unproved == 0 and total_thms >= 6 and proofs >= 6:
         soundness_score += 1
-        strengths.append("Mechanised verification with detailed proofs — highest confidence")
+        strengths.append(f"All {proofs} proofs are substantial — rigorous treatment")
 
     if empty_proofs > 0:
         soundness_score -= 1
@@ -605,14 +604,10 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
         novelty_issues.append("No formal theorems — what is the contribution?")
         weaknesses.append("No theorems or formal results stated")
 
-    # Path to 5: mechanised proof or exceptional example coverage
-    has_mechanisation = bool(re.search(r"[Ll]ean|[Cc]oq|[Aa]gda|[Ii]sabelle|mechanis", tex))
-    if has_mechanisation and theorems >= 5:
+    # Path to 5: requires BOTH many theorems AND many examples (not just keywords)
+    if theorems >= 6 and examples >= 3:
         novelty_score += 1
-        strengths.append("Mechanised verification strengthens the formal results")
-    elif examples >= 4 and theorems >= 5:
-        novelty_score += 1
-        strengths.append(f"Exceptional depth: {theorems} theorems with {examples} examples")
+        strengths.append(f"Exceptional depth: {theorems} formal results with {examples} worked examples")
 
     if examples >= 2:
         strengths.append(f"{examples} worked examples demonstrate the results")
@@ -641,11 +636,10 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
         soundness_score += 1
         strengths.append("Every theorem has a proof")
 
-    # Path to 5: mechanised verification + all proofs detailed
-    has_mechanisation = bool(re.search(r"[Ll]ean|[Cc]oq|[Aa]gda|[Ii]sabelle|mechanis", tex))
-    if has_mechanisation and empty_proofs == 0 and unproved == 0 and total_thms >= 5:
+    # Path to 5: ALL proofs substantial (none short) + many theorems
+    if empty_proofs == 0 and unproved == 0 and total_thms >= 6 and proofs >= 6:
         soundness_score += 1
-        strengths.append("Mechanised verification with detailed proofs — highest confidence")
+        strengths.append(f"All {proofs} proofs are substantial — rigorous treatment")
 
     if empty_proofs > 0:
         soundness_score -= 1
@@ -709,11 +703,12 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
         significance_issues.append("No evaluation or validation section")
         questions.append("How have you validated the results? Are there benchmarks?")
 
-    # Path to 5: tool available + substantial benchmarks
-    has_tool = bool(re.search(r"open.source|available|github|tool|implementation|library", tex, re.IGNORECASE))
-    if has_tool and tables >= 2:
+    # Path to 5: substantial benchmarks (>=50 mentioned) + multiple tables
+    benchmark_counts = re.findall(r"(\d+)\s*(?:benchmark|protocol)", tex, re.IGNORECASE)
+    max_benchmarks = max((int(n) for n in benchmark_counts), default=0)
+    if max_benchmarks >= 50 and tables >= 3:
         significance_score += 1
-        strengths.append("Tool support with substantial empirical evaluation")
+        strengths.append(f"{max_benchmarks} benchmarks with {tables} result tables — thorough evaluation")
     elif tables >= 1:
         pass
     else:
