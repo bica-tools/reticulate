@@ -401,6 +401,88 @@ def _generate_step_proposals(snapshot: ProgrammeSnapshot) -> list[Proposal]:
         "medium", depends_on=("157b",),
     ))
 
+    # ── CROSS-DISCIPLINARY STEPS ──
+
+    proposals.append(Proposal(
+        "step", "Step 81: Smart contract lifecycle as session type",
+        "Model Ethereum/Solidity smart contract state machines as session types. "
+        "Runtime monitors enforce transaction ordering. Targets FC, IEEE Blockchain.",
+        "high", depends_on=("71", "80"),
+        details={"venues": ["FC", "IEEE Blockchain", "ESEC/FSE"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 82: LLM agent protocol verification",
+        "Extend MCP/A2A conformance testing to multi-agent LLM orchestration systems. "
+        "Session types catch protocol violations in agent-to-agent communication.",
+        "high", depends_on=("70", "70b", "70c"),
+        details={"venues": ["NeurIPS workshop", "AAAI", "ICML workshop"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 83: Protocol mining from observed traces",
+        "Use reconstruct() to mine session types from observed state machines and logs. "
+        "Connects process mining (BPM/ICPM) to session type theory.",
+        "medium", depends_on=("9", "156"),
+        details={"venues": ["BPM", "ICPM"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 84: Interactive session type pedagogy",
+        "Build web-based interactive exercises for teaching concurrency via session types. "
+        "Leverages the existing web app + dialogue types from Step 18.",
+        "medium", depends_on=("52", "18"),
+        details={"venues": ["ITiCSE", "SIGCSE", "Koli Calling"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 85: Biological signaling pathways as session types",
+        "Model enzyme cascades, ion channels, and cell cycle regulation as session types. "
+        "Lattice structure reveals pathway properties (modularity, redundancy).",
+        "low", depends_on=("53",),
+        details={"venues": ["CMSB", "BioPPN"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 86: IoT protocol verification (MQTT, CoAP)",
+        "Model MQTT pub/sub and CoAP request/response as session types. "
+        "Generate runtime monitors for IoT device protocol compliance.",
+        "medium", depends_on=("80",),
+        details={"venues": ["IoTDI", "SenSys", "MIDDLEWARE"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 87: Legal procedures as session types",
+        "Model court procedures, contract negotiations, regulatory compliance as session types. "
+        "Lattice structure reveals procedural fairness and deadlock-freedom.",
+        "low", depends_on=("53",),
+        details={"venues": ["ICAIL", "JURIX"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 88: Musical form as session type",
+        "Model sonata form, fugue structure, theme and variations as session types. "
+        "Parallel composition captures polyphony. Non-distributivity from counterpoint.",
+        "low", depends_on=("53",),
+        details={"venues": ["ISMIR", "NIME"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 89: Security protocol verification via lattice properties",
+        "Verify OAuth, TLS, mTLS authentication protocols via lattice embeddings. "
+        "Subtyping ensures safe protocol version evolution.",
+        "high", depends_on=("7",),
+        details={"venues": ["CCS", "S&P", "USENIX Security"]},
+    ))
+
+    proposals.append(Proposal(
+        "step", "Step 90: Database transaction protocols as session types",
+        "Model JDBC connection lifecycle and transaction protocols (begin/commit/rollback). "
+        "CI gate prevents transaction protocol regressions in database drivers.",
+        "medium", depends_on=("53",),
+        details={"venues": ["VLDB", "SIGMOD", "EDBT"]},
+    ))
+
     return proposals
 
 

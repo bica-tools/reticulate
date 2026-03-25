@@ -443,6 +443,78 @@ def _generate_papers(results: list[PublishableResult]) -> list[PaperProposal]:
         priority="long-term", deadline="~2027", cites=("F1", "GT1", "C1"), status="planned",
     ))
 
+    # ── CROSS-DISCIPLINARY ──
+    papers.append(PaperProposal(
+        id="BC1", title="Session Types for Smart Contract Verification",
+        layer="application", steps=("71", "80"),
+        contribution="Smart contract lifecycle as session type. Runtime monitors enforce transaction ordering.",
+        venues=("FC (Financial Cryptography)", "IEEE Blockchain", "ESEC/FSE"), format="conference 12pp",
+        priority="short-term", deadline="~Sep 2026", cites=("F1", "I1", "I3"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="ML1", title="Formal Protocol Verification for LLM Agent Systems",
+        layer="application", steps=("70", "70b", "70c"),
+        contribution="First formal verification framework for MCP/A2A. Session types catch protocol violations in multi-agent LLM systems.",
+        venues=("NeurIPS workshop on agents", "AAAI", "ICML workshop"), format="conference 10pp",
+        priority="short-term", deadline="~Sep 2026", cites=("F1", "AI1"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="PM1", title="Protocol Mining via Session Type Reconstruction",
+        layer="application", steps=("9", "156"),
+        contribution="reconstruct() mines session types from observed state machines. Connects process mining to session type theory.",
+        venues=("BPM (Business Process Management)", "ICPM (Process Mining)"), format="conference 12pp",
+        priority="medium-term", deadline="~Mar 2027", cites=("F1", "F2", "M5"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="ED1", title="Teaching Concurrency Through Session Types",
+        layer="application", steps=("52", "18"),
+        contribution="Web-based interactive tool for teaching protocol design. Session types as pedagogical framework.",
+        venues=("ITiCSE", "SIGCSE", "Koli Calling"), format="conference 10pp",
+        priority="medium-term", deadline="~Jan 2027", cites=("F1", "T1"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="BIO1", title="Session Types for Molecular Interaction Protocols",
+        layer="application", steps=("53",),
+        contribution="Biological signaling pathways as session types. Lattice structure reveals pathway properties.",
+        venues=("CMSB (Computational Methods in Systems Biology)", "BioPPN"), format="conference 12pp",
+        priority="long-term", deadline="~Jun 2027", cites=("F1", "X3"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="IOT1", title="Session Types for IoT Protocol Verification",
+        layer="application", steps=("80",),
+        contribution="MQTT pub/sub as session type. Runtime monitors for IoT device protocol compliance.",
+        venues=("IoTDI", "SenSys", "MIDDLEWARE"), format="conference 10pp",
+        priority="medium-term", deadline="~Jun 2027", cites=("F1", "I3"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="LAW1", title="Formalizing Legal Procedures as Session Types",
+        layer="application", steps=("53",),
+        contribution="Court procedures, contract negotiations as session types. Lattice structure reveals procedural fairness.",
+        venues=("ICAIL (AI and Law)", "JURIX"), format="conference 12pp",
+        priority="long-term", deadline="~Jun 2027", cites=("F1", "X3"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="MUS1", title="Musical Form as Session Type",
+        layer="application", steps=("53",),
+        contribution="Musical structure (sonata form, theme and variations) as session types. Parallel composition = polyphony.",
+        venues=("ISMIR", "NIME"), format="conference 8pp",
+        priority="long-term", deadline="~2027", cites=("F1", "X3"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="SEC1", title="Session Types for Security Protocol Verification",
+        layer="application", steps=("7", "53"),
+        contribution="Authentication/authorization protocols verified via lattice properties. Subtyping ensures safe protocol evolution.",
+        venues=("CCS (ACM)", "S&P", "USENIX Security"), format="conference 15pp",
+        priority="short-term", deadline="~Oct 2026", cites=("F1", "M1"), status="planned",
+    ))
+    papers.append(PaperProposal(
+        id="DB1", title="Session Types for Database Transaction Protocols",
+        layer="application", steps=("53",),
+        contribution="Transaction lifecycle (begin/commit/rollback) as session type. CI gate prevents transaction protocol regressions.",
+        venues=("VLDB", "SIGMOD", "EDBT"), format="conference 12pp",
+        priority="medium-term", deadline="~Mar 2027", cites=("F1", "T1"), status="planned",
+    ))
+
     # ── TOOL PAPERS ──
     papers.append(PaperProposal(
         id="T1", title="Reticulate: A Session Type Lattice Checker",
@@ -468,8 +540,54 @@ def _generate_papers(results: list[PublishableResult]) -> list[PaperProposal]:
 # Core
 # ---------------------------------------------------------------------------
 
-def plan_publications(root: Path | str | None = None) -> PublicationPlan:
-    """Generate the complete publication plan."""
+def _connection_papers(root: Path) -> list[PaperProposal]:
+    """Generate paper proposals from high-strength step connections.
+
+    Uses the connection_detector to find step intersections that are not
+    yet covered by manually curated paper proposals.
+    """
+    from reticulate.connection_detector import (
+        detect_connections,
+        scan_steps,
+    )
+
+    steps = scan_steps(root)
+    if not steps:
+        return []
+
+    report = detect_connections(steps)
+    proposals: list[PaperProposal] = []
+
+    for i, conn in enumerate(report.paper_opportunities):
+        pid = f"CD{i + 1}"
+        proposals.append(PaperProposal(
+            id=pid,
+            title=conn.paper_title,
+            layer="intersection",
+            steps=(conn.step_a, conn.step_b),
+            contribution=f"Auto-detected {conn.connection_type} connection "
+                         f"(strength {conn.strength:.2f}) between "
+                         f"Step {conn.step_a} and Step {conn.step_b}.",
+            venues=conn.venues,
+            format="workshop 8pp",
+            priority="medium-term",
+            deadline="rolling",
+            cites=("F1",),
+            status="detected",
+        ))
+
+    return proposals
+
+
+def plan_publications(root: Path | str | None = None,
+                      include_connections: bool = True) -> PublicationPlan:
+    """Generate the complete publication plan.
+
+    Args:
+        root: Project root directory.
+        include_connections: If True, also run the connection detector
+            and add high-strength connections as paper proposals.
+    """
     if root is None:
         for candidate in [Path.cwd(), Path.cwd().parent, Path(__file__).parent.parent.parent]:
             if (candidate / "papers" / "steps").is_dir():
@@ -482,6 +600,23 @@ def plan_publications(root: Path | str | None = None) -> PublicationPlan:
 
     results = _scan_results(root)
     papers = _generate_papers(results)
+
+    # Add connection-detected papers
+    if include_connections:
+        conn_papers = _connection_papers(root)
+        # Filter out connections already covered by curated papers
+        curated_pairs: set[frozenset[str]] = set()
+        for p in papers:
+            step_list = list(p.steps)
+            for i, sa in enumerate(step_list):
+                for sb in step_list[i + 1:]:
+                    curated_pairs.add(frozenset([sa, sb]))
+
+        for cp in conn_papers:
+            pair = frozenset(cp.steps)
+            if pair not in curated_pairs:
+                papers.append(cp)
+                curated_pairs.add(pair)
 
     # Find unmapped results
     mapped_steps = set()
