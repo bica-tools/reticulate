@@ -266,19 +266,18 @@ AGENTS: dict[str, AgentType] = {
     ),
 }
 
-# The orchestrator's full recursive protocol (13 agents)
+# The orchestrator's full recursive protocol with parallel constructors.
+# Independent phases run in parallel:
+#   Phase 2: implement || writePaper
+#   Phase 3: writeTests || writeProofs
+# This models real workflow independence and forces lattice structure.
 ORCHESTRATOR_TYPE = (
     "rec S . &{scan: +{proposals: "
-    "&{formalize: +{definitions: "
-    "&{investigate: +{report: "
-    "&{implement: +{moduleReady: "
-    "&{writeTests: +{testsPass: "
-    "&{runBenchmarks: +{benchmarksDone: "
-    "&{writePaper: +{paperReady: "
-    "&{writeProofs: +{proofsReady: "
-    "&{findLinks: +{linked: "
+    "&{research: +{report: "
+    "(&{implement: +{moduleReady: end}} || &{writePaper: +{paperReady: end}}) . "
+    "(&{writeTests: +{testsPass: end}} || &{writeProofs: +{proofsReady: end}}) . "
     "&{evaluate: +{accepted: +{nextStep: S, allDone: end}, "
-    "needsFixes: &{review: +{fixes: S}}}}}}}}}}}}}}}}}}}}}}"
+    "needsFixes: &{review: +{fixes: S}}}}}}}}"
 )
 
 # Phase classification
