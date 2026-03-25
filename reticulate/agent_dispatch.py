@@ -219,7 +219,7 @@ def supervisor_handler(agent_id: str, step_number: str, task: str) -> dict[str, 
         "transitions": ["scan", "proposals"],
         "output": {
             "snapshot": {
-                "total_steps": report.snapshot.total_steps,
+                "total_steps": report.snapshot.total_steps_planned,
                 "complete_steps": report.snapshot.complete_steps,
                 "total_tests": report.snapshot.total_tests,
             },
