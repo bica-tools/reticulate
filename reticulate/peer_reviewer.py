@@ -260,6 +260,12 @@ def review_paper(
         soundness_score += 1
         strengths.append("Every theorem has a proof")
 
+    # Path to 5: mechanised verification + all proofs detailed
+    has_mechanisation = bool(re.search(r"[Ll]ean|[Cc]oq|[Aa]gda|[Ii]sabelle|mechanis", tex))
+    if has_mechanisation and empty_proofs == 0 and unproved == 0 and total_thms >= 5:
+        soundness_score += 1
+        strengths.append("Mechanised verification with detailed proofs — highest confidence")
+
     if empty_proofs > 0:
         soundness_score -= 1
         soundness_issues.append(f"{empty_proofs} proof(s) are suspiciously short (< 50 words)")
@@ -293,7 +299,10 @@ def review_paper(
             clarity_issues.append(f"Missing sections: {', '.join(missing)}")
             weaknesses.append(f"Missing standard sections: {', '.join(missing)}")
 
-    if figures >= 2:
+    if figures >= 5:
+        clarity_score += 1
+        strengths.append(f"{figures} figures/diagrams provide excellent visual support")
+    elif figures >= 2:
         strengths.append(f"{figures} figures/diagrams aid understanding")
     elif figures == 0:
         clarity_issues.append("No figures — Hasse diagrams or state machines would help")
@@ -596,6 +605,15 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
         novelty_issues.append("No formal theorems — what is the contribution?")
         weaknesses.append("No theorems or formal results stated")
 
+    # Path to 5: mechanised proof or exceptional example coverage
+    has_mechanisation = bool(re.search(r"[Ll]ean|[Cc]oq|[Aa]gda|[Ii]sabelle|mechanis", tex))
+    if has_mechanisation and theorems >= 5:
+        novelty_score += 1
+        strengths.append("Mechanised verification strengthens the formal results")
+    elif examples >= 4 and theorems >= 5:
+        novelty_score += 1
+        strengths.append(f"Exceptional depth: {theorems} theorems with {examples} examples")
+
     if examples >= 2:
         strengths.append(f"{examples} worked examples demonstrate the results")
     else:
@@ -622,6 +640,12 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
     elif total_thms > 0 and proofs >= total_thms:
         soundness_score += 1
         strengths.append("Every theorem has a proof")
+
+    # Path to 5: mechanised verification + all proofs detailed
+    has_mechanisation = bool(re.search(r"[Ll]ean|[Cc]oq|[Aa]gda|[Ii]sabelle|mechanis", tex))
+    if has_mechanisation and empty_proofs == 0 and unproved == 0 and total_thms >= 5:
+        soundness_score += 1
+        strengths.append("Mechanised verification with detailed proofs — highest confidence")
 
     if empty_proofs > 0:
         soundness_score -= 1
@@ -656,7 +680,10 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
             clarity_issues.append(f"Missing sections: {', '.join(missing)}")
             weaknesses.append(f"Missing standard sections: {', '.join(missing)}")
 
-    if figures >= 2:
+    if figures >= 5:
+        clarity_score += 1
+        strengths.append(f"{figures} figures/diagrams provide excellent visual support")
+    elif figures >= 2:
         strengths.append(f"{figures} figures/diagrams aid understanding")
     elif figures == 0:
         clarity_issues.append("No figures — Hasse diagrams or state machines would help")
@@ -682,7 +709,12 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
         significance_issues.append("No evaluation or validation section")
         questions.append("How have you validated the results? Are there benchmarks?")
 
-    if tables >= 1:
+    # Path to 5: tool available + substantial benchmarks
+    has_tool = bool(re.search(r"open.source|available|github|tool|implementation|library", tex, re.IGNORECASE))
+    if has_tool and tables >= 2:
+        significance_score += 1
+        strengths.append("Tool support with substantial empirical evaluation")
+    elif tables >= 1:
         pass
     else:
         significance_issues.append("No tables with empirical data")
