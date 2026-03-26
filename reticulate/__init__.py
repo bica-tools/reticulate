@@ -348,6 +348,16 @@ from reticulate.openapi import (
     validate_api_trace,
     webhook_subscription_flow,
 )
+from reticulate.irreducibles import (
+    BirkhoffDualResult,
+    IrreduciblesResult,
+    analyze_irreducibles,
+    birkhoff_dual,
+    is_join_irreducible,
+    is_meet_irreducible,
+    join_irreducibles as join_irreducibles_poset,
+    meet_irreducibles as meet_irreducibles_poset,
+)
 from reticulate.matrix import (
     AlgebraicInvariants,
     adjacency_matrix,
@@ -623,6 +633,15 @@ from reticulate.db_protocols import (
     verify_all_db_protocols,
     verify_db_protocol,
 )
+from reticulate.birkhoff import (
+    BirkhoffResult,
+    DownsetLattice,
+    birkhoff_representation,
+    downset_lattice,
+    is_representable,
+    reconstruct_from_poset,
+    representation_size,
+)
 from reticulate.visualize import (
     dot_source,
     hasse_diagram,
@@ -849,6 +868,14 @@ __all__ = [
     "compare_internal_external",
     "coupled_tensor",
     "tensor_product",
+    "BirkhoffDualResult",
+    "IrreduciblesResult",
+    "analyze_irreducibles",
+    "birkhoff_dual",
+    "is_join_irreducible",
+    "is_meet_irreducible",
+    "join_irreducibles_poset",
+    "meet_irreducibles_poset",
     "AlgebraicInvariants",
     "adjacency_matrix",
     "adjacency_spectrum",

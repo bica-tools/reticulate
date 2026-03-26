@@ -148,7 +148,8 @@ _MODULE_MAP: dict[str, str] = {
     "23": "place_invariants", "24": "coverability", "25": "petri_benchmarks",
     "26": "ccs", "27": "csp", "28": "failures",
     "29": "lattice", "29a": "lattice", "29b": "lattice",
-    "30": "matrix", "70": "mcp_conformance", "70b": "mcp_server",
+    "30": "matrix", "30i": "irreducibles", "30j": "birkhoff",
+    "70": "mcp_conformance", "70b": "mcp_server",
     "70e": "compress",
     # Paper-only steps (no dedicated module): 2, 29b, 50-53, 70c, 70d, 104, 155b-168, 200*, 900*
 }
