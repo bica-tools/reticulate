@@ -151,6 +151,7 @@ _MODULE_MAP: dict[str, str] = {
     "30": "matrix", "30i": "irreducibles", "30j": "birkhoff",
     "70": "mcp_conformance", "70b": "mcp_server",
     "70e": "compress",
+    "57a": "audio_routing",
     # Paper-only steps (no dedicated module): 2, 29b, 50-53, 70c, 70d, 104, 155b-168, 200*, 900*
 }
 
