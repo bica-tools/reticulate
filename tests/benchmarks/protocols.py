@@ -1883,4 +1883,71 @@ BENCHMARKS: list[BenchmarkProtocol] = [
         expected_sccs=2,
         uses_parallel=False,
     ),
+    # ------------------------------------------------------------------
+    # Game theory benchmarks (106–108)
+    # ------------------------------------------------------------------
+    # 106. Nim (3 objects, 2 players)
+    BenchmarkProtocol(
+        name="Nim (3 objects)",
+        type_string=(
+            "+{take1: &{take1: +{take1: end}, take2: end}, "
+            "take2: &{take1: end}, "
+            "take3: end}"
+        ),
+        description=(
+            "Nim with 3 objects and 2 players (normal play convention). "
+            "Player 1 (Select) removes 1–3 objects, Player 2 (Branch) responds. "
+            "Last player to take wins. Full game tree as session type."
+        ),
+        expected_states=5,
+        expected_transitions=7,
+        expected_sccs=5,
+        uses_parallel=False,
+    ),
+    # 107. Hex (2x2 board)
+    BenchmarkProtocol(
+        name="Hex (2x2)",
+        type_string=(
+            "+{a: &{b: +{c: end, d: &{c: end}}, "
+            "c: +{b: &{d: end}, d: &{b: end}}, "
+            "d: +{b: &{c: end}, c: end}}, "
+            "b: &{a: +{c: end, d: end}, "
+            "c: +{a: &{d: end}, d: end}, "
+            "d: +{a: &{c: end}, c: end}}, "
+            "c: &{a: +{b: end, d: &{b: end}}, "
+            "b: +{a: end, d: &{a: end}}, "
+            "d: +{a: end, b: end}}, "
+            "d: &{a: +{b: end, c: &{b: end}}, "
+            "b: +{a: &{c: end}, c: &{a: end}}, "
+            "c: +{a: &{b: end}, b: end}}}"
+        ),
+        description=(
+            "Hex on a 2x2 board with full game tree. Cells a=(0,0), b=(0,1), "
+            "c=(1,0), d=(1,1). Player 1 (Select) connects top–bottom, "
+            "Player 2 (Branch) connects left–right. Self-dual session type — "
+            "duality = player swap. No draws possible (Hex theorem)."
+        ),
+        expected_states=30,
+        expected_transitions=52,
+        expected_sccs=30,
+        uses_parallel=False,
+    ),
+    # 108. Dominion Attack/Moat Reaction
+    BenchmarkProtocol(
+        name="Dominion Attack/Moat",
+        type_string=(
+            "(+{play_attack: wait} || &{react: end, pass: end}) "
+            ". &{resolve: end}"
+        ),
+        description=(
+            "Dominion card game: Attack/Moat reaction window. Attacker plays "
+            "concurrently with defender's reaction choice (Moat or pass). "
+            "Uses parallel constructor for genuine fork-join concurrency. "
+            "After synchronization, attack resolves."
+        ),
+        expected_states=5,
+        expected_transitions=7,
+        expected_sccs=5,
+        uses_parallel=True,
+    ),
 ]
