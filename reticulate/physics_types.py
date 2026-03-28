@@ -143,8 +143,8 @@ PHYSICS_LIBRARY: dict[str, PhysicsEntry] = {
     ),
     "carnot_cycle": PhysicsEntry(
         "carnot_cycle", "thermodynamics",
-        "rec X . &{isothermal_expand: +{adiabatic_expand: &{isothermal_compress: +{adiabatic_compress: X}}}}",
-        "Carnot cycle: ideal thermodynamic engine cycle",
+        "rec X . &{isothermal_expand: +{adiabatic_expand: &{isothermal_compress: +{adiabatic_compress: X, stop: end}}}}",
+        "Carnot cycle: ideal thermodynamic engine cycle with stop",
         "human",
     ),
 
@@ -198,6 +198,13 @@ PHYSICS_LIBRARY: dict[str, PhysicsEntry] = {
         "&{ground_state: +{excite: &{emit: +{ground_state: end}}}}",
         "Hydrogen atom: excitation and relaxation cycle",
         "atomic",
+    ),
+
+    "neutrino": PhysicsEntry(
+        "neutrino", "particles",
+        "&{produce: +{oscillate: &{detect: end, pass_through: end}}}",
+        "Neutrino: produced in reactions, oscillates flavour, rarely detected",
+        "planck",
     ),
 
     # -- Relativity --

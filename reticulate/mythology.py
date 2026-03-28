@@ -172,8 +172,8 @@ _ARCHETYPE_DEFS: list[tuple[str, str, str, str]] = [
      "Death-Rebirth: crisis, surrender, dissolution, rebirth"),
     ("ouroboros",
      "greek",
-     "rec X . &{create: +{sustain: &{destroy: +{recreate: X}}}}",
-     "The Ouroboros: eternal cycle of creation, sustenance, destruction, recreation"),
+     "rec X . &{create: +{sustain: &{destroy: +{recreate: X, dissolve: end}}}}",
+     "The Ouroboros: eternal cycle of creation, sustenance, destruction, recreation or dissolution"),
     ("prometheus",
      "greek",
      "&{steal_fire: +{gift: &{punishment: +{endurance: end}}}}",
@@ -184,12 +184,12 @@ _ARCHETYPE_DEFS: list[tuple[str, str, str, str]] = [
      "Orpheus: descends to the underworld, seeks the beloved, looks back or trusts"),
     ("sisyphus",
      "greek",
-     "rec X . &{push: +{summit: &{fall: X}}}",
-     "Sisyphus: pushes the boulder, reaches the summit, falls, repeats forever"),
+     "rec X . &{push: +{summit: &{fall: X, collapse: end}}}",
+     "Sisyphus: pushes the boulder, reaches the summit, falls and repeats, or collapses"),
     ("phoenix",
      "greek",
-     "rec X . &{burn: +{ashes: &{rise: X}}}",
-     "The Phoenix: burns, becomes ashes, rises again -- eternal renewal"),
+     "rec X . &{burn: +{ashes: &{rise: X, extinguish: end}}}",
+     "The Phoenix: burns, becomes ashes, rises again or finally extinguishes"),
     ("labyrinth",
      "greek",
      "rec X . &{enter: +{left: X, right: X, center: end}}",
@@ -228,8 +228,8 @@ _ARCHETYPE_DEFS: list[tuple[str, str, str, str]] = [
      "The High Priestess (Tarot II): veil, intuition, mystery, revelation or concealment"),
     ("wheel_of_fortune",
      "tarot",
-     "rec X . &{ascend: +{peak: &{descend: +{nadir: X}}}}",
-     "Wheel of Fortune (Tarot X): ascend, peak, descend, nadir -- eternal turning"),
+     "rec X . &{ascend: +{peak: &{descend: +{nadir: X, stillness: end}}}}",
+     "Wheel of Fortune (Tarot X): ascend, peak, descend, nadir or stillness"),
 ]
 
 
@@ -366,11 +366,38 @@ def mythological_analogy(name1: str, name2: str) -> float:
     return compatibility_score(ast1, ast2)
 
 
+def _free_vars(node: SessionType, bound: frozenset[str] = frozenset()) -> set[str]:
+    """Collect free type variables in an AST."""
+    if isinstance(node, (End, Wait)):
+        return set()
+    if isinstance(node, Var):
+        return {node.name} if node.name not in bound else set()
+    if isinstance(node, Branch):
+        result: set[str] = set()
+        for _, c in node.choices:
+            result |= _free_vars(c, bound)
+        return result
+    if isinstance(node, Select):
+        result = set()
+        for _, c in node.choices:
+            result |= _free_vars(c, bound)
+        return result
+    if isinstance(node, Parallel):
+        result = set()
+        for b in node.branches:
+            result |= _free_vars(b, bound)
+        return result
+    if isinstance(node, Rec):
+        return _free_vars(node.body, bound | {node.var})
+    return set()  # pragma: no cover
+
+
 def quest(start_archetype: str, challenges: list[str]) -> str:
     """Compose a mythological quest by dialectic synthesis.
 
     Start with the given archetype's session type, then fold each
     challenge archetype into the accumulated type via Hegelian dialectic.
+    Free variables from recursive types are re-wrapped in ``rec``.
     Returns the pretty-printed synthesized type string.
     """
     arch = get_archetype(start_archetype)
@@ -379,6 +406,10 @@ def quest(start_archetype: str, challenges: list[str]) -> str:
         challenge_arch = get_archetype(challenge_name)
         challenge_ast = parse(challenge_arch.session_type_str)
         accumulated = dialectic(accumulated, challenge_ast)
+    # Re-wrap any free variables that lost their binder during dialectic.
+    free = _free_vars(accumulated)
+    for var_name in sorted(free):
+        accumulated = Rec(var_name, accumulated)
     return pretty(accumulated)
 
 
