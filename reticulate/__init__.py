@@ -665,6 +665,16 @@ from reticulate.audio_routing import (
     unsafe_feedback,
     verify_routing,
 )
+from reticulate.topology import (
+    TopologicalResult,
+    betti_numbers,
+    classify_topology,
+    cycle_rank,
+    edge_density,
+    euler_characteristic,
+    is_tree,
+    topological_distance,
+)
 from reticulate.visualize import (
     dot_source,
     hasse_diagram,
@@ -1139,6 +1149,14 @@ __all__ = [
     "verify_iot_protocol",
     "zigbee_data_transfer",
     "zigbee_join",
+    "TopologicalResult",
+    "betti_numbers",
+    "classify_topology",
+    "cycle_rank",
+    "edge_density",
+    "euler_characteristic",
+    "is_tree",
+    "topological_distance",
     "ALL_DB_PROTOCOLS",
     "DBAnalysisResult",
     "DBProtocol",
