@@ -665,6 +665,16 @@ from reticulate.audio_routing import (
     unsafe_feedback,
     verify_routing,
 )
+from reticulate.pedagogy import (
+    DialogueResult,
+    ScaffoldingResult,
+    analyze_dialogue,
+    analyze_scaffolding,
+    classify_pedagogy,
+    developmental_stages,
+    learning_path,
+    zone_of_proximal_development,
+)
 from reticulate.topology import (
     TopologicalResult,
     betti_numbers,
@@ -1149,6 +1159,14 @@ __all__ = [
     "verify_iot_protocol",
     "zigbee_data_transfer",
     "zigbee_join",
+    "DialogueResult",
+    "ScaffoldingResult",
+    "analyze_dialogue",
+    "analyze_scaffolding",
+    "classify_pedagogy",
+    "developmental_stages",
+    "learning_path",
+    "zone_of_proximal_development",
     "TopologicalResult",
     "betti_numbers",
     "classify_topology",
