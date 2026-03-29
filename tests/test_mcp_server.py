@@ -22,6 +22,9 @@ try:
         compress_type,
         analyze_global,
         ci_check,
+        subtype_check,
+        dual,
+        trace_validate,
     )
     from reticulate.mcp_server import test_gen as mcp_test_gen
 except ImportError:
@@ -228,6 +231,93 @@ class TestCiCheck:
     def test_recursive_check(self) -> None:
         result = ci_check(RECURSIVE)
         assert len(result) > 0
+
+
+# ===================================================================
+# subtype_check tool
+# ===================================================================
+
+class TestSubtypeCheck:
+    def test_subtype_more_methods(self) -> None:
+        result = subtype_check("&{a: end, b: end}", "&{a: end}")
+        assert "True" in result
+        assert "YES" in result
+
+    def test_not_subtype(self) -> None:
+        result = subtype_check("&{a: end}", "&{a: end, b: end}")
+        assert "False" in result or "NO" in result or "reversed" in result.lower()
+
+    def test_equivalent(self) -> None:
+        result = subtype_check("&{a: end}", "&{a: end}")
+        assert "equivalent" in result.lower() or "True" in result
+
+    def test_incomparable(self) -> None:
+        result = subtype_check("+{a: end, b: end}", "&{a: end, b: end}")
+        assert len(result) > 0
+
+    def test_parse_error(self) -> None:
+        result = subtype_check("&{bad", "&{a: end}")
+        assert "error" in result.lower()
+
+
+# ===================================================================
+# dual tool
+# ===================================================================
+
+class TestDual:
+    def test_branch_to_select(self) -> None:
+        result = dual("&{a: end, b: end}")
+        assert "+{" in result or "⊕" in result
+
+    def test_involution(self) -> None:
+        result = dual("&{open: &{read: +{data: end, eof: end}}}")
+        assert "Involution:  True" in result
+
+    def test_end_is_self_dual(self) -> None:
+        result = dual("end")
+        assert "end" in result
+
+    def test_recursive(self) -> None:
+        result = dual("rec X . &{a: X, b: end}")
+        assert "rec" in result.lower() or "μ" in result
+
+    def test_parse_error(self) -> None:
+        result = dual("not a type")
+        assert "error" in result.lower()
+
+
+# ===================================================================
+# trace_validate tool
+# ===================================================================
+
+class TestTraceValidate:
+    def test_valid_complete_trace(self) -> None:
+        result = trace_validate("&{open: &{read: &{close: end}}}", "open,read,close")
+        assert "VALID" in result
+        assert "terminal: True" in result
+
+    def test_valid_partial_trace(self) -> None:
+        result = trace_validate("&{open: &{read: &{close: end}}}", "open,read")
+        assert "VALID" in result
+        assert "terminal: False" in result
+
+    def test_invalid_trace(self) -> None:
+        result = trace_validate("&{open: &{read: &{close: end}}}", "open,close")
+        assert "INVALID" in result
+        assert "close" in result
+
+    def test_empty_trace(self) -> None:
+        result = trace_validate("&{a: end}", "")
+        assert "VALID" in result
+
+    def test_branch_choice(self) -> None:
+        result = trace_validate("&{a: end, b: end}", "a")
+        assert "VALID" in result
+        assert "terminal: True" in result
+
+    def test_parse_error(self) -> None:
+        result = trace_validate("bad type", "a,b")
+        assert "error" in result.lower()
 
     def test_with_distributive_requirement(self) -> None:
         result = ci_check(TWO_BRANCH, require_distributive=True)

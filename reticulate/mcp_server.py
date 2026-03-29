@@ -517,11 +517,163 @@ def evaluate(step_number: str) -> str:
     return output
 
 
+@mcp.tool()
+def subtype_check(subtype: str, supertype: str) -> str:
+    """Check if one session type is a subtype of another (Gay-Hole subtyping).
+
+    Backward compatibility verification: is the new protocol version
+    a subtype of the old one? If yes, existing clients still work.
+
+    Returns: subtyping verdict, direction, and embedding check.
+
+    Example: subtype_check("&{a: end, b: end}", "&{a: end}")
+    """
+    t0 = _log_call("subtype_check", {"subtype": subtype, "supertype": supertype})
+    from reticulate.parser import parse, ParseError
+    from reticulate.subtyping import is_subtype
+
+    try:
+        s1 = parse(subtype)
+        s2 = parse(supertype)
+    except ParseError as e:
+        _log_error("subtype_check", t0, str(e))
+        return f"Parse error: {e}"
+
+    forward = is_subtype(s1, s2)
+    backward = is_subtype(s2, s1)
+
+    if forward and backward:
+        relation = "equivalent (mutual subtypes)"
+    elif forward:
+        relation = f"YES: {subtype}  ≤  {supertype}"
+    elif backward:
+        relation = f"NO (reversed): {supertype}  ≤  {subtype}"
+    else:
+        relation = "INCOMPARABLE: neither is a subtype of the other"
+
+    lines = [
+        f"Subtype:   {subtype}",
+        f"Supertype: {supertype}",
+        f"S₁ ≤ S₂:  {forward}",
+        f"S₂ ≤ S₁:  {backward}",
+        f"Verdict:   {relation}",
+    ]
+
+    result = "\n".join(lines)
+    _log_result("subtype_check", t0, result)
+    return result
+
+
+@mcp.tool()
+def dual(type_string: str) -> str:
+    """Compute the dual of a session type (swap Branch ↔ Select).
+
+    Given a client protocol, generates the matching server protocol.
+    The dual of a branch (external choice) is a selection (internal choice)
+    and vice versa. Parallel, recursion, and end are preserved.
+
+    Returns: the dual type string and verification that dual(dual(S)) = S.
+
+    Example: dual("&{a: end, b: end}") → "+{a: end, b: end}"
+    """
+    t0 = _log_call("dual", {"type_string": type_string})
+    from reticulate.parser import parse, pretty, ParseError
+    from reticulate.duality import dual as compute_dual
+
+    try:
+        ast = parse(type_string)
+    except ParseError as e:
+        _log_error("dual", t0, str(e))
+        return f"Parse error: {e}"
+
+    d = compute_dual(ast)
+    dd = compute_dual(d)
+    involution = pretty(dd) == pretty(ast)
+
+    lines = [
+        f"Original:    {pretty(ast)}",
+        f"Dual:        {pretty(d)}",
+        f"Dual(Dual):  {pretty(dd)}",
+        f"Involution:  {involution}",
+    ]
+
+    result = "\n".join(lines)
+    _log_result("dual", t0, result)
+    return result
+
+
+@mcp.tool()
+def trace_validate(type_string: str, trace: str) -> str:
+    """Check if a method call trace follows a session type protocol.
+
+    Given a session type and a comma-separated sequence of method names,
+    verifies that the trace is a valid execution path through the state space.
+
+    Returns: validity verdict, final state, and remaining enabled methods.
+
+    Example: trace_validate("&{open: &{read: &{close: end}}}", "open,read,close")
+    """
+    t0 = _log_call("trace_validate", {"type_string": type_string, "trace": trace})
+    from reticulate.parser import parse, ParseError
+    from reticulate.statespace import build_statespace
+
+    try:
+        ast = parse(type_string)
+    except ParseError as e:
+        _log_error("trace_validate", t0, str(e))
+        return f"Parse error: {e}"
+
+    ss = build_statespace(ast)
+
+    # Parse trace
+    methods = [m.strip() for m in trace.split(",") if m.strip()]
+
+    # Walk the state space
+    current = ss.top
+    path = [current]
+    for i, method in enumerate(methods):
+        # Find transition with this label
+        found = False
+        for src, label, tgt in ss.transitions:
+            if src == current and label == method:
+                current = tgt
+                path.append(current)
+                found = True
+                break
+        if not found:
+            enabled = sorted({l for s, l, t in ss.transitions if s == current})
+            result = "\n".join([
+                f"INVALID at step {i+1}: method '{method}' not enabled",
+                f"Trace so far: {','.join(methods[:i])}",
+                f"Current state: {current}",
+                f"Enabled methods: {', '.join(enabled) if enabled else '(none — at terminal state)'}",
+            ])
+            _log_result("trace_validate", t0, result)
+            return result
+
+    # Trace completed successfully
+    at_bottom = (current == ss.bottom)
+    enabled = sorted({l for s, l, t in ss.transitions if s == current})
+
+    lines = [
+        f"VALID: trace follows the protocol",
+        f"Trace: {trace}",
+        f"Steps: {len(methods)}",
+        f"Final state: {current}",
+        f"At terminal: {at_bottom}",
+        f"Remaining methods: {', '.join(enabled) if enabled else '(none — session complete)'}",
+    ]
+
+    result = "\n".join(lines)
+    _log_result("trace_validate", t0, result)
+    return result
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 12 tools: analyze, test_gen, hasse, invariants, "
+        "Server ready — 15 tools: analyze, test_gen, hasse, invariants, "
         "conformance, petri_net, coverage, compress_type, analyze_global, "
-        "ci_check, supervise_programme, evaluate"
+        "ci_check, supervise_programme, evaluate, subtype_check, dual, trace_validate"
     )
     mcp.run()
     logger.info(
