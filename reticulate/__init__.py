@@ -687,6 +687,27 @@ from reticulate.llm_agents import (
     tool_use_loop,
     verify_orchestration,
 )
+from reticulate.spectral_composition import (
+    SpectralCompositionResult,
+    VerificationResult as SpectralVerificationResult,
+    analyze_spectral_composition,
+    product_cheeger_bound,
+    product_eigenvalues,
+    product_eigenvalues_from_spectra,
+    product_entropy,
+    product_entropy_additive,
+    product_fiedler,
+    product_fiedler_from_values,
+    product_heat_trace,
+    product_heat_trace_series,
+    product_ihara_rank,
+    product_mixing_time,
+    product_spectral_gap,
+    verify_eigenvalue_composition,
+    verify_fiedler_composition,
+    verify_heat_trace_composition,
+    verify_spectral_composition,
+)
 from reticulate.spectral import (
     ClusteringResult,
     SimilarityResult,
