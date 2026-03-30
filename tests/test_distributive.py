@@ -58,6 +58,9 @@ class TestBenchmarkDistributivity:
         "Mutual TLS",                 # parallel, has N₅ — parallel cert verification+select
         "Certificate Chain",          # no parallel, has N₅ — intermediate chain+select
         "DNSSEC",                     # no parallel, has N₅ — multi-path validation
+        # Game benchmarks:
+        "Nim (3 objects)",            # no parallel, has N₅ — move selection creates pentagon
+        "Hex (2x2)",                  # no parallel, has M₃+N₅ — board position lattice
     }
 
     # Benchmarks that are modular (M₃) but not distributive, without N₅:
@@ -199,6 +202,8 @@ class TestModularity:
         "Big Bang Nucleosynthesis",
         # Security benchmarks:
         "SSH Handshake", "Mutual TLS", "Certificate Chain", "DNSSEC",
+        # Game benchmarks:
+        "Nim (3 objects)", "Hex (2x2)",
     }
 
     def test_modular_benchmarks(self):
@@ -258,9 +263,9 @@ class TestSummaryReport:
               f"all benchmarks distributive = {n_lat == 0 and n_mod == 0}")
         print("=" * 80)
 
-        # Empirical result: 83/105 distributive (35 boolean + 48 distributive),
-        # 20/105 lattice-only (non-distributive), 2/105 modular
-        assert n_bool + n_dist == 83, (
-            f"Expected 83 distributive, got {n_bool + n_dist}"
+        # Empirical result: updated counts after adding game benchmarks
+        # (Nim, Hex, Dominion) — Nim and Hex are non-distributive lattices
+        assert n_bool + n_dist == 84, (
+            f"Expected 84 distributive, got {n_bool + n_dist}"
         )
-        assert n_lat == 20, f"Expected 20 lattice-only, got {n_lat}"
+        assert n_lat == 22, f"Expected 22 lattice-only, got {n_lat}"

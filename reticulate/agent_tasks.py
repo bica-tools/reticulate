@@ -52,6 +52,19 @@ def _find_root() -> Path:
     return Path.cwd()
 
 
+def _module_path(module_name: str) -> Path:
+    """Find a module .py file, handling both repo root and reticulate/ CWD."""
+    # Try standard path first
+    p = _ROOT / "reticulate" / "reticulate" / f"{module_name}.py"
+    if p.exists():
+        return p
+    # If _ROOT is already the reticulate/ subdir
+    p2 = _ROOT / "reticulate" / f"{module_name}.py"
+    if p2.exists():
+        return p2
+    return p  # Return standard (will be checked for existence by caller)
+
+
 _ROOT = _find_root()
 
 
@@ -294,7 +307,7 @@ def implementer_task(step_number: str, fixes: list[str], module_name: str | None
     if not module_name:
         return None  # Paper-only step
 
-    mod_path = _ROOT / "reticulate" / "reticulate" / f"{module_name}.py"
+    mod_path = _module_path(module_name)
     if mod_path.exists():
         text = _read_file(mod_path)
         if len(text.split("\n")) >= 100:
@@ -349,8 +362,11 @@ def tester_task(step_number: str, fixes: list[str], module_name: str | None = No
     if not module_name:
         return None  # Paper-only step
 
+    # Handle both repo root and reticulate/ CWD
     test_path = _ROOT / "reticulate" / "tests" / f"test_{module_name}.py"
-    mod_path = _ROOT / "reticulate" / "reticulate" / f"{module_name}.py"
+    if not test_path.exists():
+        test_path = _ROOT / "tests" / f"test_{module_name}.py"
+    mod_path = _module_path(module_name)
 
     if test_path.exists():
         text = _read_file(test_path)

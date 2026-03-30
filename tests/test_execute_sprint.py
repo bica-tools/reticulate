@@ -168,7 +168,9 @@ class TestSprintCardsJson:
         output = sprint_cards_json()
         data = json.loads(output)
         assert data["status"] in ("all_clear", "work_needed")
-        assert "total" in data or "total_steps" in data
+        # all_clear has just status+message; work_needed has total/total_steps
+        if data["status"] == "work_needed":
+            assert "total" in data or "total_steps" in data
 
     def test_json_valid(self):
         output = sprint_cards_json()
