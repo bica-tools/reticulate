@@ -154,6 +154,15 @@ from reticulate.dos_resistance import (
     throughput_bottleneck,
     width_exposure,
 )
+from reticulate.impersonation import (
+    AuthenticationCertificate,
+    ImpersonationResult,
+    analyze_impersonation,
+    authentication_certificate,
+    check_authentic,
+    detect_impersonation,
+    duality_distance,
+)
 from reticulate.resolve import ResolveError, resolve
 from reticulate.resource_leak import (
     ResourceLeakResult,
