@@ -399,6 +399,19 @@ from reticulate.tropical import (
     tropical_mul,
     tropical_spectral_radius,
 )
+from reticulate.max_plus_paths import (
+    MaxPlusPathResult,
+    analyze_max_plus_paths,
+    bottleneck_path,
+    count_paths,
+    critical_path,
+    is_geodesic,
+    longest_path_length,
+    path_histogram,
+    path_width,
+    shortest_path_length,
+    total_paths_top_bottom,
+)
 from reticulate.tropical_determinant import (
     TropicalDetResult,
     all_tropical_minors,
