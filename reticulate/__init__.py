@@ -44,6 +44,21 @@ from reticulate.coverage import (
     coverage_storyboard,
     render_storyboard,
 )
+from reticulate.random_walk import (
+    RandomWalkResult,
+    all_hitting_times,
+    analyze_random_walk,
+    commute_time,
+    cover_time_bound,
+    eigenvalues_of_P,
+    hitting_time,
+    is_ergodic,
+    mixing_time_bound,
+    return_time,
+    spectral_gap,
+    stationary_distribution,
+    transition_matrix,
+)
 from reticulate.heat_kernel import (
     HeatKernelResult,
     analyze_heat_kernel,
@@ -820,6 +835,21 @@ from reticulate.auth_verification import (
     verify_oauth_pkce_extension,
     verify_protocol as verify_auth_protocol,
     verify_tls_downgrade_safety,
+)
+from reticulate.random_walk import (
+    RandomWalkResult,
+    all_hitting_times,
+    analyze_random_walk,
+    commute_time,
+    cover_time_bound,
+    eigenvalues_of_P,
+    hitting_time,
+    is_ergodic,
+    mixing_time_bound,
+    return_time,
+    spectral_gap,
+    stationary_distribution,
+    transition_matrix,
 )
 from reticulate.visualize import (
     dot_source,
