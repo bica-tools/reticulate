@@ -232,6 +232,38 @@ from reticulate.deadlock import (
     siphon_trap_analysis,
     spectral_deadlock_risk,
 )
+from reticulate.livelock import (
+    HeatKernelLivelockIndicator,
+    LivelockResult,
+    LivelockSCC,
+    analyze_livelock,
+    detect_livelock,
+    heat_kernel_livelock,
+    is_livelock_free,
+    livelock_sccs,
+    tropical_livelock_score,
+)
+from reticulate.starvation import (
+    RoleSpectralGap,
+    StarvationResult,
+    StarvedTransition,
+    analyze_starvation,
+    detect_starvation,
+    fairness_score,
+    is_starvation_free,
+    pendular_fairness,
+    per_role_spectral_gap,
+)
+from reticulate.orphan import (
+    OrphanResult,
+    OrphanState,
+    RepairSuggestion,
+    analyze_orphans,
+    detect_orphans,
+    is_orphan_free,
+    orphan_depth,
+    repair_orphans,
+)
 from reticulate.duality import (
     DualityResult,
     check_duality,
@@ -1000,6 +1032,43 @@ from reticulate.species import (
     symmetry_factor,
     type_generating_series,
 )
+from reticulate.noninterference import (
+    NonInterferenceResult,
+    TransitionClassification,
+    InformationFlowLattice,
+    analyze_noninterference,
+    check_noninterference,
+    classify_transitions,
+    information_flow_lattice,
+    leakage_score,
+)
+from reticulate.downgrade import (
+    DowngradeResult,
+    DowngradeRisk,
+    ForcedDowngradeResult,
+    analyze_downgrade,
+    check_downgrade,
+    detect_forced_downgrade,
+    downgrade_risk,
+    safe_downgrade_set,
+)
+from reticulate.replay import (
+    MonotoneMonitor,
+    ReplayResult,
+    analyze_replay,
+    check_replay_safety,
+    monotone_monitor,
+    replay_vulnerable_states,
+)
+from reticulate.covert_channel import (
+    CovertChannel,
+    CovertChannelResult,
+    IndependenceResult,
+    analyze_covert_channels,
+    channel_capacity,
+    detect_covert_channels,
+    parallel_independence,
+)
 
 __all__ = [
     "__version__",
@@ -1518,4 +1587,33 @@ __all__ = [
     "two_phase_commit",
     "verify_all_db_protocols",
     "verify_db_protocol",
+    "NonInterferenceResult",
+    "TransitionClassification",
+    "InformationFlowLattice",
+    "analyze_noninterference",
+    "check_noninterference",
+    "classify_transitions",
+    "information_flow_lattice",
+    "leakage_score",
+    "DowngradeResult",
+    "DowngradeRisk",
+    "ForcedDowngradeResult",
+    "analyze_downgrade",
+    "check_downgrade",
+    "detect_forced_downgrade",
+    "downgrade_risk",
+    "safe_downgrade_set",
+    "MonotoneMonitor",
+    "ReplayResult",
+    "analyze_replay",
+    "check_replay_safety",
+    "monotone_monitor",
+    "replay_vulnerable_states",
+    "CovertChannel",
+    "CovertChannelResult",
+    "IndependenceResult",
+    "analyze_covert_channels",
+    "channel_capacity",
+    "detect_covert_channels",
+    "parallel_independence",
 ]
