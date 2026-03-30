@@ -44,6 +44,22 @@ from reticulate.coverage import (
     coverage_storyboard,
     render_storyboard,
 )
+from reticulate.heat_kernel import (
+    HeatKernelResult,
+    analyze_heat_kernel,
+    diffusion_distance,
+    effective_resistance,
+    graph_laplacian,
+    heat_kernel_matrix,
+    heat_kernel_pagerank,
+    heat_kernel_signature,
+    heat_trace,
+    kemeny_constant,
+    laplacian_eigendecomposition,
+    return_probability,
+    spectral_gap,
+    total_heat_content,
+)
 from reticulate.lattice import (
     DistributivityResult,
     LatticeResult,
