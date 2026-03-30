@@ -399,6 +399,17 @@ from reticulate.tropical import (
     tropical_mul,
     tropical_spectral_radius,
 )
+from reticulate.smith_normal_form import (
+    SmithNormalFormResult,
+    adjacency_matrix,
+    analyze_smith_normal_form,
+    critical_group,
+    critical_group_order,
+    incidence_matrix,
+    invariant_factors,
+    laplacian_matrix,
+    smith_normal_form,
+)
 from reticulate.rowmotion import (
     RowmotionResult,
     all_orbits,
