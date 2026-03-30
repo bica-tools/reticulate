@@ -399,6 +399,20 @@ from reticulate.tropical import (
     tropical_mul,
     tropical_spectral_radius,
 )
+from reticulate.tropical_eigen import (
+    TropicalEigenResult,
+    analyze_tropical_eigen,
+    critical_components,
+    csr_decomposition,
+    cyclicity,
+    eigenspace_dimension,
+    is_definite,
+    kleene_star,
+    tropical_characteristic_polynomial,
+    tropical_eigenspace,
+    tropical_subeigenspace,
+    tropical_trace,
+)
 from reticulate.smith_normal_form import (
     SmithNormalFormResult,
     adjacency_matrix,
