@@ -1,23 +1,38 @@
 """Tests for rowmotion and toggling analysis (Step 30ad).
 
-Tests cover:
-- Order relation and covering relation computation
-- Order ideal enumeration
-- Antichain enumeration and bijection with order ideals
-- Toggle operations
-- Rowmotion on order ideals and antichains
-- Rowmotion via toggle decomposition (equivalence)
-- Orbit computation and partitioning
-- Rowmotion order (LCM of orbit sizes)
-- Cardinality homomesy
-- Full analysis on session type benchmarks
-- Edge cases (single state, chain, diamond, parallel)
-- Brouwer-Schrijver theorem on product of chains
+Comprehensive tests covering:
+  - Order relation computation (6 tests)
+  - Covering relation / transitive reduction (5 tests)
+  - Order ideal enumeration (7 tests)
+  - Antichain enumeration (5 tests)
+  - Antichain <-> ideal bijection (5 tests)
+  - Toggle operations (6 tests)
+  - Toggle sequence / linear extension (3 tests)
+  - Rowmotion on ideals (8 tests)
+  - Rowmotion on antichains (3 tests)
+  - Rowmotion via toggle decomposition (4 tests)
+  - Orbit decomposition (5 tests)
+  - Rowmotion order (5 tests)
+  - Homomesy checking (4 tests)
+  - Full analysis (6 tests)
+  - Benchmark protocols (5 tests)
+  - Mathematical properties (5 tests)
+
+Total: 82 tests.
+
+Poset ordering: s1 >= s2 iff s2 is reachable from s1.
+Top = initial state (greatest), bottom = end state (least).
+Order ideals are downsets: if x in I and y <= x then y in I.
 """
 
+from __future__ import annotations
+
+import math
+
 import pytest
+
 from reticulate.parser import parse
-from reticulate.statespace import build_statespace
+from reticulate.statespace import StateSpace, build_statespace
 from reticulate.rowmotion import (
     RowmotionResult,
     all_orbits,
@@ -31,8 +46,8 @@ from reticulate.rowmotion import (
     order_ideals,
     rowmotion_antichain,
     rowmotion_ideal,
-    rowmotion_order,
     rowmotion_orbit,
+    rowmotion_order,
     rowmotion_via_toggles,
     toggle,
     toggle_sequence,
@@ -43,591 +58,844 @@ from reticulate.rowmotion import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _build(s: str):
-    """Parse and build state space."""
+def _build(s: str) -> StateSpace:
+    """Parse a session type string and build its state space."""
     return build_statespace(parse(s))
 
 
-# ---------------------------------------------------------------------------
-# Order relation
-# ---------------------------------------------------------------------------
+def _chain(n: int) -> StateSpace:
+    """Build a chain of n elements: 0 > 1 > ... > n-1.
+
+    top = 0, bottom = n-1.
+    """
+    ss = StateSpace()
+    ss.states = set(range(n))
+    ss.transitions = [(i, f"t{i}", i + 1) for i in range(n - 1)]
+    ss.top = 0
+    ss.bottom = n - 1
+    ss.labels = {i: f"s{i}" for i in range(n)}
+    return ss
+
+
+def _boolean_lattice_2() -> StateSpace:
+    """Boolean lattice 2^2 = diamond: top > a, b > bot.
+
+    States: 0=top, 1=a, 2=b, 3=bot.
+    """
+    ss = StateSpace()
+    ss.states = {0, 1, 2, 3}
+    ss.transitions = [
+        (0, "a", 1), (0, "b", 2),
+        (1, "x", 3), (2, "y", 3),
+    ]
+    ss.top = 0
+    ss.bottom = 3
+    ss.labels = {0: "top", 1: "a", 2: "b", 3: "bot"}
+    return ss
+
+
+def _is_downset(ideal: frozenset[int], order: dict[int, set[int]]) -> bool:
+    """Check that ideal is a valid order ideal (downset).
+
+    order[x] gives all elements at or below x (including x).
+    For I to be a downset: if x in I, then order[x] subset of I.
+    """
+    for x in ideal:
+        if x in order and not order[x].issubset(ideal):
+            return False
+    return True
+
+
+def _is_antichain(ac: frozenset[int], order: dict[int, set[int]]) -> bool:
+    """Check that no two elements in ac are comparable."""
+    elems = list(ac)
+    for i in range(len(elems)):
+        for j in range(i + 1, len(elems)):
+            a, b = elems[i], elems[j]
+            if b in order.get(a, set()) or a in order.get(b, set()):
+                return False
+    return True
+
+
+# =========================================================================
+# TestOrderRelation
+# =========================================================================
 
 class TestOrderRelation:
     """Tests for compute_order_relation."""
 
     def test_end_single_state(self):
+        """end: single state, reflexively related to itself."""
         ss = _build("end")
-        rel = compute_order_relation(ss)
-        # Single state is related to itself
-        assert len(rel) == 1
-        for r, below in rel.items():
-            assert r in below
+        order = compute_order_relation(ss)
+        assert len(order) == 1
+        for s, below in order.items():
+            assert s in below  # reflexive
 
-    def test_chain_two(self):
+    def test_branch_two_states(self):
+        """&{a: end}: top > bottom, two states."""
         ss = _build("&{a: end}")
-        rel = compute_order_relation(ss)
-        # top > bottom, so top's downset includes bottom
-        assert len(rel) >= 1
+        order = compute_order_relation(ss)
+        assert len(order) == 2
+        # Find top (the one that reaches more elements)
+        top_rep = max(order, key=lambda s: len(order[s]))
+        bot_rep = min(order, key=lambda s: len(order[s]))
+        assert bot_rep in order[top_rep]  # top >= bottom
+        assert top_rep not in order[bot_rep]  # bottom !>= top
 
-    def test_branch_two(self):
+    def test_branch_shared_end(self):
+        """&{a: end, b: end}: both labels go to same end, so 2-element poset."""
         ss = _build("&{a: end, b: end}")
-        rel = compute_order_relation(ss)
-        # Should have reflexive closure
-        for r, below in rel.items():
-            assert r in below
+        order = compute_order_relation(ss)
+        # top reaches bottom
+        top_rep = max(order, key=lambda s: len(order[s]))
+        assert len(order[top_rep]) == len(order)
 
-    def test_diamond(self):
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
-        rel = compute_order_relation(ss)
-        # Top should reach all states
-        top_below = rel.get(min(r for r, b in rel.items() if len(b) == max(len(v) for v in rel.values())), set())
-        assert len(top_below) >= 1
+    def test_chain_three_hand_built(self):
+        """Hand-built 3-chain: 0 > 1 > 2."""
+        ss = _chain(3)
+        order = compute_order_relation(ss)
+        assert order[0] == {0, 1, 2}  # top reaches everything
+        assert order[1] == {1, 2}     # mid reaches itself and bottom
+        assert order[2] == {2}        # bottom only itself
 
+    def test_diamond_incomparability(self):
+        """Boolean lattice: a and b are incomparable."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        # a (state 1) and b (state 2) should not be comparable
+        assert 2 not in order[1]  # a does not reach b
+        assert 1 not in order[2]  # b does not reach a
+
+    def test_order_is_reflexive(self):
+        """Every element is in its own downset."""
+        for type_str in ["end", "&{a: end}", "&{a: &{b: end}}"]:
+            ss = _build(type_str)
+            order = compute_order_relation(ss)
+            for s in order:
+                assert s in order[s], f"reflexivity failed for {s}"
+
+
+# =========================================================================
+# TestCovers
+# =========================================================================
 
 class TestCovers:
-    """Tests for compute_covers."""
+    """Tests for compute_covers (Hasse diagram / transitive reduction)."""
+
+    def test_chain_covers_successor_only(self):
+        """In a 4-chain, each element covers only its immediate successor."""
+        ss = _chain(4)
+        covers = compute_covers(ss)
+        assert covers[0] == {1}
+        assert covers[1] == {2}
+        assert covers[2] == {3}
+        assert covers[3] == set()
+
+    def test_chain_no_transitive_covers(self):
+        """In a chain, there are no skip covers (transitive reduction)."""
+        ss = _chain(4)
+        covers = compute_covers(ss)
+        assert 2 not in covers[0]  # 0 does not cover 2
+        assert 3 not in covers[0]  # 0 does not cover 3
+
+    def test_diamond_top_covers_middle(self):
+        """Diamond: top covers a and b; a,b cover bot."""
+        ss = _boolean_lattice_2()
+        covers = compute_covers(ss)
+        assert covers[0] == {1, 2}  # top covers a and b
+        assert covers[1] == {3}     # a covers bot
+        assert covers[2] == {3}     # b covers bot
+        assert 3 not in covers[0]   # top does NOT cover bot
 
     def test_end_no_covers(self):
+        """Single state: no covering relations."""
         ss = _build("end")
         covers = compute_covers(ss)
-        # Single state covers nothing
-        for r, cov in covers.items():
-            assert len(cov) == 0
+        for s in covers:
+            assert len(covers[s]) == 0
 
-    def test_chain_one_cover(self):
-        ss = _build("&{a: end}")
+    def test_total_covers_diamond(self):
+        """Diamond has exactly 4 covering pairs."""
+        ss = _boolean_lattice_2()
         covers = compute_covers(ss)
-        # top covers bottom
-        total_covers = sum(len(c) for c in covers.values())
-        assert total_covers == 1
-
-    def test_branch_two_covers(self):
-        ss = _build("&{a: end, b: end}")
-        covers = compute_covers(ss)
-        total_covers = sum(len(c) for c in covers.values())
-        # top covers bottom (both a and b lead to same end)
-        assert total_covers >= 1
+        total = sum(len(c) for c in covers.values())
+        assert total == 4
 
 
-# ---------------------------------------------------------------------------
-# Order ideals
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestOrderIdeals
+# =========================================================================
 
 class TestOrderIdeals:
     """Tests for order ideal enumeration."""
 
-    def test_end_two_ideals(self):
+    def test_single_state_two_ideals(self):
+        """Single element poset: 2 ideals (empty and full)."""
         ss = _build("end")
         ideals = order_ideals(ss)
-        # Single element poset: empty set and {bottom}
-        assert len(ideals) == 2  # {} and {the single state}
-
-    def test_chain_two_ideals(self):
-        ss = _build("&{a: end}")
-        ideals = order_ideals(ss)
-        # Chain of 2: {}, {bottom}, {bottom, top} = 3 ideals? No.
-        # In a 2-chain, ideals are: {}, {0}, {0,1} where 0 < 1
-        # Wait: for a 2-element chain a > b, ideals = {}, {b}, {a,b}
-        assert len(ideals) >= 2
-
-    def test_ideals_are_downsets(self):
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
-        rel = compute_order_relation(ss)
-        # Verify each ideal is a downset
-        for ideal in ideals:
-            for x in ideal:
-                # Everything below x should be in ideal
-                if x in rel:
-                    for y in rel[x]:
-                        if y != x and y in rel:
-                            # y <= x, so y should be in ideal
-                            # but we need to check if y is below x
-                            pass  # Below relation already encoded
-
-    def test_empty_always_ideal(self):
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
+        assert len(ideals) == 2
         assert frozenset() in ideals
 
-    def test_full_set_always_ideal(self):
-        ss = _build("&{a: end, b: end}")
+    def test_chain_2_three_ideals(self):
+        """2-chain has n+1 = 3 ideals: {}, {bot}, {bot, top}."""
+        ss = _chain(2)
         ideals = order_ideals(ss)
-        rel = compute_order_relation(ss)
-        full = frozenset(rel.keys())
-        assert full in ideals
+        assert len(ideals) == 3
 
-    def test_chain_three(self):
-        ss = _build("&{a: &{b: end}}")
+    def test_chain_3_four_ideals(self):
+        """3-chain has n+1 = 4 ideals."""
+        ss = _chain(3)
         ideals = order_ideals(ss)
-        # Chain of 3 elements: ideals = {}, {bottom}, {bottom, mid}, {all}
-        # n+1 ideals for a chain of n elements
-        # But exact count depends on SCC quotient structure
-        assert len(ideals) >= 3
+        assert len(ideals) == 4
 
+    def test_chain_4_five_ideals(self):
+        """4-chain has n+1 = 5 ideals."""
+        ss = _chain(4)
+        ideals = order_ideals(ss)
+        assert len(ideals) == 5
+
+    def test_diamond_six_ideals(self):
+        """Boolean lattice 2^2 has 6 order ideals."""
+        ss = _boolean_lattice_2()
+        ideals = order_ideals(ss)
+        assert len(ideals) == 6
+
+    def test_every_ideal_is_valid_downset(self):
+        """Every enumerated ideal must satisfy the downset property."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        for ideal in order_ideals(ss):
+            assert _is_downset(ideal, order), f"{ideal} is not a valid downset"
+
+    def test_empty_and_full_always_present(self):
+        """Empty set and full poset are always order ideals."""
+        for ss in [_chain(2), _chain(3), _boolean_lattice_2()]:
+            ideals = order_ideals(ss)
+            order = compute_order_relation(ss)
+            assert frozenset() in ideals
+            full = frozenset(order.keys())
+            assert full in ideals
+
+
+# =========================================================================
+# TestAntichains
+# =========================================================================
 
 class TestAntichains:
     """Tests for antichain enumeration."""
 
-    def test_end_antichains(self):
+    def test_single_state_two_antichains(self):
+        """Single state: 2 antichains (empty and singleton)."""
         ss = _build("end")
         acs = antichains(ss)
-        # Single element: {} and {element}
         assert len(acs) == 2
 
-    def test_bijection_count(self):
-        """Number of antichains equals number of order ideals."""
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
+    def test_chain_antichains_count(self):
+        """n-chain: n+1 antichains (empty + n singletons)."""
+        ss = _chain(3)
         acs = antichains(ss)
-        assert len(ideals) == len(acs)
+        # Antichains of a chain: empty, {0}, {1}, {2} = 4 = n+1
+        assert len(acs) == 4
 
-    def test_antichains_incomparable(self):
-        """Each antichain contains only pairwise incomparable elements."""
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
+    def test_diamond_antichains_count(self):
+        """Diamond has 6 antichains (same as ideals)."""
+        ss = _boolean_lattice_2()
         acs = antichains(ss)
-        rel = compute_order_relation(ss)
-        for ac in acs:
-            for x in ac:
-                for y in ac:
-                    if x != y:
-                        # x and y should be incomparable
-                        x_below = rel.get(x, set())
-                        y_below = rel.get(y, set())
-                        assert y not in x_below or x not in y_below
+        assert len(acs) == 6
+
+    def test_every_antichain_is_valid(self):
+        """No two elements in any antichain are comparable."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        for ac in antichains(ss):
+            assert _is_antichain(ac, order), f"{ac} is not a valid antichain"
+
+    def test_count_equals_ideals_count(self):
+        """Fundamental bijection: #antichains = #order ideals."""
+        for ss in [_build("end"), _chain(2), _chain(3), _boolean_lattice_2()]:
+            assert len(antichains(ss)) == len(order_ideals(ss))
 
 
-# ---------------------------------------------------------------------------
-# Antichain <-> Ideal bijection
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestBijection
+# =========================================================================
 
 class TestBijection:
     """Tests for antichain <-> order ideal bijection."""
 
-    def test_roundtrip_ideal_to_antichain(self):
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
+    def test_roundtrip_ideal_to_antichain_to_ideal(self):
+        """For every ideal, ideal -> antichain -> ideal is identity."""
+        ss = _boolean_lattice_2()
+        for ideal in order_ideals(ss):
             ac = ideal_to_antichain(ss, ideal)
             recovered = antichain_to_ideal(ss, ac)
-            assert recovered == ideal
+            assert recovered == ideal, \
+                f"Round-trip failed: {ideal} -> {ac} -> {recovered}"
 
-    def test_empty_ideal_empty_antichain(self):
+    def test_roundtrip_antichain_to_ideal_to_antichain(self):
+        """For every antichain, antichain -> ideal -> antichain is identity."""
+        ss = _boolean_lattice_2()
+        for ac in antichains(ss):
+            ideal = antichain_to_ideal(ss, ac)
+            recovered = ideal_to_antichain(ss, ideal)
+            assert recovered == ac, \
+                f"Round-trip failed: {ac} -> {ideal} -> {recovered}"
+
+    def test_empty_antichain_gives_empty_ideal(self):
+        """Empty antichain corresponds to empty ideal."""
         ss = _build("&{a: end}")
-        ac = ideal_to_antichain(ss, frozenset())
-        assert ac == frozenset()
+        assert antichain_to_ideal(ss, frozenset()) == frozenset()
 
-    def test_empty_antichain_empty_ideal(self):
+    def test_empty_ideal_gives_empty_antichain(self):
+        """Empty ideal has no maximal elements."""
         ss = _build("&{a: end}")
-        ideal = antichain_to_ideal(ss, frozenset())
-        assert ideal == frozenset()
+        assert ideal_to_antichain(ss, frozenset()) == frozenset()
 
-    def test_full_ideal_top_antichain(self):
-        """Full ideal should have the top element(s) as antichain."""
-        ss = _build("&{a: end}")
-        rel = compute_order_relation(ss)
-        full = frozenset(rel.keys())
-        ac = ideal_to_antichain(ss, full)
-        assert len(ac) >= 1
+    def test_roundtrip_on_chain(self):
+        """Round-trip on a 3-chain."""
+        ss = _chain(3)
+        for ideal in order_ideals(ss):
+            ac = ideal_to_antichain(ss, ideal)
+            assert antichain_to_ideal(ss, ac) == ideal
 
 
-# ---------------------------------------------------------------------------
-# Toggle
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestToggle
+# =========================================================================
 
 class TestToggle:
     """Tests for toggle operations."""
 
-    def test_toggle_add(self):
-        """Toggle adds element if predecessors are in ideal."""
-        ss = _build("&{a: end}")
-        rel = compute_order_relation(ss)
-        reps = sorted(rel.keys())
-        # Find bottom (the element with empty below set)
-        from reticulate.rowmotion import _quotient_poset
-        _, _, _, below, _ = _quotient_poset(ss)
-        bottom = [r for r in reps if len(below[r]) == 0][0]
-        # Empty ideal, toggle bottom should add it (no predecessors needed)
-        result = toggle(ss, frozenset(), bottom)
-        assert bottom in result
+    def test_toggle_add_bottom_to_empty(self):
+        """Toggle bottom into empty ideal: adds it (no predecessors)."""
+        ss = _chain(2)
+        order = compute_order_relation(ss)
+        # Bottom is the element with only itself in its downset
+        bot = min(order, key=lambda s: len(order[s]))
+        result = toggle(ss, frozenset(), bot)
+        assert bot in result
 
-    def test_toggle_remove(self):
-        """Toggle removes element if it's maximal in ideal."""
-        ss = _build("&{a: end}")
+    def test_toggle_remove_maximal(self):
+        """Toggle removes a maximal element from an ideal."""
+        ss = _chain(2)
         seq = toggle_sequence(ss)
-        bottom = seq[0]
-        ideal = frozenset({bottom})
-        result = toggle(ss, ideal, bottom)
-        assert bottom not in result
+        bot = seq[0]
+        result = toggle(ss, frozenset({bot}), bot)
+        assert bot not in result
 
-    def test_toggle_idempotent_pair(self):
-        """Toggling same element twice returns original ideal."""
-        ss = _build("&{a: end, b: end}")
+    def test_double_toggle_identity(self):
+        """Toggling the same element twice returns to original."""
+        ss = _boolean_lattice_2()
         seq = toggle_sequence(ss)
-        bottom = seq[0]
+        bot = seq[0]
         ideal = frozenset()
-        first = toggle(ss, ideal, bottom)
-        second = toggle(ss, first, bottom)
-        assert second == ideal
+        step1 = toggle(ss, ideal, bot)
+        step2 = toggle(ss, step1, bot)
+        assert step2 == ideal
 
-    def test_toggle_preserves_downset(self):
-        """Result of toggle is always a valid order ideal."""
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
-        ideals = order_ideals(ss)
-        rel = compute_order_relation(ss)
-        reps = sorted(rel.keys())
-        ideals_set = set(ideals)
-        for ideal in ideals:
-            for x in reps:
+    def test_toggle_preserves_downset_property(self):
+        """After any toggle, the result is still a valid order ideal."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        ideals_set = set(order_ideals(ss))
+        for ideal in order_ideals(ss):
+            for x in order:
                 result = toggle(ss, ideal, x)
-                assert result in ideals_set
+                assert result in ideals_set, \
+                    f"toggle({ideal}, {x}) = {result} not in ideals"
 
+    def test_toggle_cannot_add_without_predecessors(self):
+        """Cannot add element whose predecessors are not in ideal."""
+        ss = _boolean_lattice_2()
+        # Top (0) has elements below it; cannot add to empty ideal
+        result = toggle(ss, frozenset(), 0)
+        assert 0 not in result
+
+    def test_toggle_cannot_remove_needed_element(self):
+        """Cannot remove element that supports another element in ideal."""
+        ss = _boolean_lattice_2()
+        # Ideal {3, 1} = {bot, a}: removing bot would leave {a} which
+        # is not a downset since a covers bot.
+        ideal = frozenset({3, 1})
+        result = toggle(ss, ideal, 3)
+        assert 3 in result  # cannot remove bot
+
+
+# =========================================================================
+# TestToggleSequence
+# =========================================================================
 
 class TestToggleSequence:
-    """Tests for linear extension computation."""
+    """Tests for toggle_sequence (linear extension)."""
 
-    def test_sequence_contains_all_elements(self):
-        ss = _build("&{a: end, b: end}")
+    def test_all_elements_present(self):
+        """Toggle sequence contains all poset elements exactly once."""
+        ss = _boolean_lattice_2()
         seq = toggle_sequence(ss)
-        rel = compute_order_relation(ss)
-        assert set(seq) == set(rel.keys())
+        order = compute_order_relation(ss)
+        assert set(seq) == set(order.keys())
+        assert len(seq) == len(set(seq))  # no duplicates
 
-    def test_sequence_respects_order(self):
-        """Top elements appear before bottom elements (descending rank)."""
-        ss = _build("&{a: &{b: end}}")
+    def test_linear_extension_order(self):
+        """Toggle sequence is a valid linear extension (top to bottom)."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
         seq = toggle_sequence(ss)
-        rel = compute_order_relation(ss)
-        # For each pair, if x < y (x in below[y]), then y appears before x
-        # (top-to-bottom ordering for toggle decomposition)
-        idx = {s: i for i, s in enumerate(seq)}
-        for y in seq:
-            for x in rel.get(y, set()):
+        pos = {s: i for i, s in enumerate(seq)}
+        # The module returns top-to-bottom order: if x > y, x appears before y
+        for y in order:
+            for x in order[y]:
                 if x != y:
-                    # y > x, so y should appear before x (smaller index)
-                    assert idx[y] <= idx[x]
+                    # x < y (x reachable from y), so y appears before x
+                    assert pos[y] < pos[x], \
+                        f"Linear extension violated: {y} (greater) should precede {x} (lesser)"
+
+    def test_top_first_bottom_last(self):
+        """Top has highest rank (first), bottom has lowest (last)."""
+        ss = _boolean_lattice_2()
+        seq = toggle_sequence(ss)
+        # Top = 0 (greatest element), bottom = 3 (least element)
+        assert seq[0] == 0   # top first
+        assert seq[-1] == 3  # bottom last
 
 
-# ---------------------------------------------------------------------------
-# Rowmotion
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestRowmotionIdeal
+# =========================================================================
 
 class TestRowmotionIdeal:
-    """Tests for rowmotion on order ideals."""
+    """Tests for rowmotion_ideal."""
 
-    def test_empty_ideal(self):
-        """Row({}) = downset(min(P)) = downset(bottom) = {bottom}."""
-        ss = _build("&{a: end}")
+    def test_empty_ideal_maps_to_downset_of_min(self):
+        """Row({}) = downset(min(P)) = downset({bottom}) = {bottom}."""
+        ss = _chain(3)
         result = rowmotion_ideal(ss, frozenset())
-        # min(P \ {}) = min(P) = bottom
-        assert len(result) >= 1
+        assert ss.bottom in result
 
-    def test_full_ideal(self):
-        """Row(P) = downset(min({})) = downset({}) = {}."""
-        ss = _build("&{a: end}")
-        rel = compute_order_relation(ss)
-        full = frozenset(rel.keys())
+    def test_full_ideal_maps_to_empty(self):
+        """Row(P) = downset(min(empty)) = empty set."""
+        ss = _chain(3)
+        order = compute_order_relation(ss)
+        full = frozenset(order.keys())
         result = rowmotion_ideal(ss, full)
         assert result == frozenset()
 
-    def test_rowmotion_is_permutation(self):
-        """Rowmotion maps order ideals to order ideals."""
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
-        ideals_set = set(ideals)
-        for ideal in ideals:
+    def test_rowmotion_is_bijection_chain(self):
+        """Rowmotion is a bijection on order ideals of a chain."""
+        ss = _chain(3)
+        ideals_list = order_ideals(ss)
+        results = [rowmotion_ideal(ss, i) for i in ideals_list]
+        assert len(set(results)) == len(ideals_list)
+
+    def test_rowmotion_is_bijection_diamond(self):
+        """Rowmotion is a bijection on order ideals of the diamond."""
+        ss = _boolean_lattice_2()
+        ideals_list = order_ideals(ss)
+        results = [rowmotion_ideal(ss, i) for i in ideals_list]
+        # All results are valid ideals
+        ideals_set = set(ideals_list)
+        for r in results:
+            assert r in ideals_set, f"{r} is not a valid ideal"
+        # All results are distinct
+        assert len(set(results)) == len(results)
+
+    def test_rowmotion_result_is_always_ideal(self):
+        """Rowmotion always produces a valid order ideal."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        for ideal in order_ideals(ss):
             result = rowmotion_ideal(ss, ideal)
-            assert result in ideals_set
+            assert _is_downset(result, order), \
+                f"rowmotion({ideal}) = {result} is not a downset"
 
-    def test_rowmotion_bijective(self):
-        """Rowmotion is a bijection on order ideals."""
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
-        ideals = order_ideals(ss)
-        images = [rowmotion_ideal(ss, i) for i in ideals]
-        assert len(set(images)) == len(ideals)
+    def test_rowmotion_on_session_type(self):
+        """Rowmotion is a bijection on a session type state space."""
+        ss = _build("&{a: end}")
+        ideals_list = order_ideals(ss)
+        results = [rowmotion_ideal(ss, i) for i in ideals_list]
+        assert len(set(results)) == len(results)
 
+    def test_chain_2_cycle(self):
+        """2-chain: rowmotion cycles {} -> {bot} -> {bot,top} -> {}."""
+        ss = _chain(2)
+        order = compute_order_relation(ss)
+        reps = sorted(order.keys())
+        bot, top = reps[0] if len(order[reps[0]]) == 1 else reps[1], \
+                   reps[0] if len(order[reps[0]]) > 1 else reps[1]
+        # Check cycle has length 3
+        start = frozenset()
+        current = start
+        cycle_len = 0
+        while True:
+            current = rowmotion_ideal(ss, current)
+            cycle_len += 1
+            if current == start:
+                break
+            assert cycle_len < 10, "Cycle too long"
+        assert cycle_len == 3
+
+    def test_diamond_full_cycle(self):
+        """Diamond: verify complete rowmotion cycle structure."""
+        ss = _boolean_lattice_2()
+        ideals_list = order_ideals(ss)
+        # Track each ideal through one full orbit
+        for ideal in ideals_list:
+            orbit = rowmotion_orbit(ss, ideal)
+            # orbit starts with ideal and ends just before returning
+            assert orbit[0] == ideal
+            # Applying rowmotion to last element returns to start
+            assert rowmotion_ideal(ss, orbit[-1]) == ideal
+
+
+# =========================================================================
+# TestRowmotionAntichain
+# =========================================================================
 
 class TestRowmotionAntichain:
-    """Tests for rowmotion on antichains."""
+    """Tests for rowmotion_antichain."""
 
     def test_empty_antichain(self):
+        """Rowmotion on empty antichain."""
         ss = _build("&{a: end}")
         result = rowmotion_antichain(ss, frozenset())
         assert isinstance(result, frozenset)
 
-    def test_antichain_rowmotion_consistent(self):
-        """Rowmotion on antichains is consistent with rowmotion on ideals."""
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
+    def test_consistent_with_ideal_rowmotion(self):
+        """Antichain rowmotion agrees with ideal rowmotion via conversion."""
+        ss = _boolean_lattice_2()
+        for ideal in order_ideals(ss):
             ac = ideal_to_antichain(ss, ideal)
-            # rowmotion on ideal, then to antichain
+            # Via ideals
             new_ideal = rowmotion_ideal(ss, ideal)
             expected_ac = ideal_to_antichain(ss, new_ideal)
-            # rowmotion on antichain directly
-            result_ac = rowmotion_antichain(ss, ac)
-            assert result_ac == expected_ac
+            # Via antichains
+            actual_ac = rowmotion_antichain(ss, ac)
+            assert actual_ac == expected_ac
 
+    def test_result_is_valid_antichain(self):
+        """Result of rowmotion_antichain is a valid antichain."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        for ac in antichains(ss):
+            result = rowmotion_antichain(ss, ac)
+            assert _is_antichain(result, order), \
+                f"rowmotion_antichain({ac}) = {result} is not an antichain"
+
+
+# =========================================================================
+# TestRowmotionViaToggles
+# =========================================================================
 
 class TestRowmotionViaToggles:
-    """Tests for rowmotion via toggle decomposition."""
+    """Tests for rowmotion via toggle composition."""
 
-    def test_matches_direct(self):
-        """Toggle decomposition gives same result as direct rowmotion."""
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
+    def test_produces_valid_ideal(self):
+        """Toggle-based rowmotion produces a valid order ideal."""
+        ss = _boolean_lattice_2()
+        order = compute_order_relation(ss)
+        for ideal in order_ideals(ss):
+            result = rowmotion_via_toggles(ss, ideal)
+            assert _is_downset(result, order)
+
+    def test_is_bijection(self):
+        """Toggle-based rowmotion is a bijection on order ideals."""
+        ss = _boolean_lattice_2()
+        ideals_list = order_ideals(ss)
+        results = [rowmotion_via_toggles(ss, i) for i in ideals_list]
+        assert len(set(results)) == len(results)
+
+    def test_agrees_direct_chain(self):
+        """Toggle rowmotion agrees with direct rowmotion on 2-chain."""
+        ss = _chain(2)
+        for ideal in order_ideals(ss):
             direct = rowmotion_ideal(ss, ideal)
-            via_tog = rowmotion_via_toggles(ss, ideal)
-            assert via_tog == direct, (
-                f"Mismatch for {ideal}: direct={direct}, toggles={via_tog}"
-            )
+            via_t = rowmotion_via_toggles(ss, ideal)
+            assert direct == via_t
 
-    def test_matches_direct_diamond(self):
-        """Toggle decomposition on diamond lattice."""
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
+    def test_agrees_direct_diamond(self):
+        """Toggle rowmotion agrees with direct rowmotion on diamond."""
+        ss = _boolean_lattice_2()
+        for ideal in order_ideals(ss):
             direct = rowmotion_ideal(ss, ideal)
-            via_tog = rowmotion_via_toggles(ss, ideal)
-            assert via_tog == direct
-
-    def test_matches_direct_chain(self):
-        """Toggle decomposition on chain."""
-        ss = _build("&{a: &{b: end}}")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
-            direct = rowmotion_ideal(ss, ideal)
-            via_tog = rowmotion_via_toggles(ss, ideal)
-            assert via_tog == direct
+            via_t = rowmotion_via_toggles(ss, ideal)
+            assert direct == via_t
 
 
-# ---------------------------------------------------------------------------
-# Orbits
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestOrbits
+# =========================================================================
 
 class TestOrbits:
-    """Tests for rowmotion orbit computation."""
+    """Tests for orbit decomposition."""
 
-    def test_orbit_returns_to_start(self):
-        ss = _build("&{a: end}")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
-            orbit = rowmotion_orbit(ss, ideal)
-            assert orbit[0] == ideal
-            # Applying rowmotion once more should give start
-            assert rowmotion_ideal(ss, orbit[-1]) == ideal
-
-    def test_orbits_partition(self):
-        """All orbits together contain all order ideals exactly once."""
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
+    def test_orbits_partition_all_ideals(self):
+        """All orbits together contain every order ideal exactly once."""
+        ss = _boolean_lattice_2()
+        ideals_list = order_ideals(ss)
         orbits = all_orbits(ss)
-        all_in_orbits: list[frozenset[int]] = []
+        all_in_orbits = []
         for orbit in orbits:
             all_in_orbits.extend(orbit)
-        assert len(all_in_orbits) == len(ideals)
-        assert set(map(id, all_in_orbits)) != set()  # non-empty
+        assert len(all_in_orbits) == len(ideals_list)
+        assert set(all_in_orbits) == set(ideals_list)
 
-    def test_orbit_sizes_sum(self):
-        """Sum of orbit sizes equals number of order ideals."""
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
-        ideals = order_ideals(ss)
+    def test_orbit_sizes_divide_order(self):
+        """Each orbit size divides the rowmotion order (LCM)."""
+        ss = _boolean_lattice_2()
+        order = rowmotion_order(ss)
+        for orbit in all_orbits(ss):
+            assert order % len(orbit) == 0
+
+    def test_order_is_lcm_of_sizes(self):
+        """Rowmotion order = LCM of orbit sizes."""
+        ss = _boolean_lattice_2()
+        order = rowmotion_order(ss)
+        orbits = all_orbits(ss)
+        sizes = [len(o) for o in orbits]
+        expected = 1
+        for s in sizes:
+            expected = math.lcm(expected, s)
+        assert order == expected
+
+    def test_each_orbit_is_a_cycle(self):
+        """Applying rowmotion len(orbit) times returns to start."""
+        ss = _boolean_lattice_2()
+        for orbit in all_orbits(ss):
+            start = orbit[0]
+            current = start
+            for _ in range(len(orbit)):
+                current = rowmotion_ideal(ss, current)
+            assert current == start
+
+    def test_chain_2_single_orbit(self):
+        """2-chain: all 3 ideals form one orbit of size 3."""
+        ss = _chain(2)
         orbits = all_orbits(ss)
         total = sum(len(o) for o in orbits)
-        assert total == len(ideals)
+        assert total == 3
 
+
+# =========================================================================
+# TestRowmotionOrder
+# =========================================================================
 
 class TestRowmotionOrder:
-    """Tests for rowmotion order computation."""
+    """Tests for rowmotion_order."""
 
     def test_single_state(self):
+        """end: rowmotion order is finite."""
         ss = _build("end")
         order = rowmotion_order(ss)
         assert order >= 1
 
-    def test_chain_two_order(self):
-        """Chain of 2: rowmotion order should be 2+1=3? For [2], order = 2."""
-        ss = _build("&{a: end}")
-        order = rowmotion_order(ss)
-        # 2-element chain: ideals = {}, {bot}, {bot, top}
-        # Row({}) = {bot}, Row({bot}) = {bot,top}, Row({bot,top}) = {}
-        # So order = 3 for a 2-chain? Actually let's verify.
-        assert order >= 1
+    def test_chain_2_order_3(self):
+        """2-chain: rowmotion order = 3."""
+        ss = _chain(2)
+        assert rowmotion_order(ss) == 3
 
-    def test_order_divides_factorial(self):
-        """Rowmotion order divides |J(P)|! (number of ideals factorial)."""
-        ss = _build("&{a: end, b: end}")
-        ideals = order_ideals(ss)
-        order = rowmotion_order(ss)
-        n = len(ideals)
-        # order divides n! (since rowmotion is a permutation of n elements)
-        fact = 1
-        for i in range(1, n + 1):
-            fact *= i
-        assert fact % order == 0
+    def test_chain_3_order_4(self):
+        """3-chain: rowmotion order = 4."""
+        ss = _chain(3)
+        assert rowmotion_order(ss) == 4
+
+    def test_chain_4_order_5(self):
+        """4-chain: rowmotion order = 5."""
+        ss = _chain(4)
+        assert rowmotion_order(ss) == 5
+
+    def test_diamond_order_4(self):
+        """Boolean lattice 2^2: rowmotion order = 4 (Brouwer-Schrijver)."""
+        ss = _boolean_lattice_2()
+        assert rowmotion_order(ss) == 4
 
 
-# ---------------------------------------------------------------------------
-# Homomesy
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestHomomesy
+# =========================================================================
 
 class TestHomomesy:
     """Tests for cardinality homomesy."""
 
     def test_single_orbit_always_homomesic(self):
-        """With a single orbit, homomesy is trivially true."""
-        ss = _build("&{a: end}")
+        """A single orbit is trivially homomesic."""
+        ss = _chain(2)
+        orbits = all_orbits(ss)
+        # All ideals in one orbit
+        is_homo, avg = check_homomesy(ss, orbits)
+        assert is_homo is True
+        assert avg is not None
+
+    def test_diamond_homomesy(self):
+        """Diamond: cardinality should be homomesic."""
+        ss = _boolean_lattice_2()
         orbits = all_orbits(ss)
         is_homo, avg = check_homomesy(ss, orbits)
-        # May have multiple orbits, but check the function works
-        assert isinstance(is_homo, bool)
+        assert is_homo is True
 
-    def test_empty_orbits(self):
-        """Empty orbit list is trivially homomesic."""
+    def test_chain_2_average(self):
+        """2-chain: average cardinality = (0+1+2)/3 = 1.0."""
+        ss = _chain(2)
+        orbits = all_orbits(ss)
+        is_homo, avg = check_homomesy(ss, orbits)
+        assert avg is not None
+        assert abs(avg - 1.0) < 1e-10
+
+    def test_empty_orbits_trivial(self):
+        """Empty orbit list: homomesic by convention."""
         ss = _build("end")
         is_homo, avg = check_homomesy(ss, [])
         assert is_homo is True
-
-    def test_homomesy_result_type(self):
-        ss = _build("&{a: end, b: end}")
-        orbits = all_orbits(ss)
-        is_homo, avg = check_homomesy(ss, orbits)
-        assert isinstance(is_homo, bool)
-        if is_homo:
-            assert isinstance(avg, (int, float))
+        assert avg is None
 
 
-# ---------------------------------------------------------------------------
-# Parallel composition (product of chains)
-# ---------------------------------------------------------------------------
-
-class TestParallel:
-    """Tests for rowmotion on parallel composition (product lattices)."""
-
-    def test_parallel_ideals(self):
-        """Parallel composition produces more order ideals."""
-        ss = _build("(&{a: end} || &{b: end})")
-        ideals = order_ideals(ss)
-        assert len(ideals) >= 4  # Product of 2-chains: [2]x[2] has 6 ideals
-
-    def test_parallel_rowmotion_permutation(self):
-        """Rowmotion is a permutation on product lattice."""
-        ss = _build("(&{a: end} || &{b: end})")
-        ideals = order_ideals(ss)
-        ideals_set = set(ideals)
-        for ideal in ideals:
-            result = rowmotion_ideal(ss, ideal)
-            assert result in ideals_set
-
-    def test_parallel_toggle_decomposition(self):
-        """Toggle decomposition works on product lattice."""
-        ss = _build("(&{a: end} || &{b: end})")
-        ideals = order_ideals(ss)
-        for ideal in ideals:
-            direct = rowmotion_ideal(ss, ideal)
-            via_tog = rowmotion_via_toggles(ss, ideal)
-            assert via_tog == direct
-
-
-# ---------------------------------------------------------------------------
-# Full analysis
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestAnalyzeRowmotion
+# =========================================================================
 
 class TestAnalyzeRowmotion:
     """Tests for the full analyze_rowmotion function."""
 
-    def test_result_type(self):
-        ss = _build("&{a: end}")
-        result = analyze_rowmotion(ss)
-        assert isinstance(result, RowmotionResult)
-
-    def test_result_fields(self):
-        ss = _build("&{a: end, b: end}")
-        result = analyze_rowmotion(ss)
-        assert len(result.order_ideals) > 0
-        assert len(result.antichains) == len(result.order_ideals)
-        assert result.rowmotion_order >= 1
-        assert result.num_orbits >= 1
-        assert sum(result.orbit_sizes) == len(result.order_ideals)
-        assert len(result.toggle_sequence) > 0
-        assert isinstance(result.is_homomesic_cardinality, bool)
-
-    def test_end_analysis(self):
+    def test_result_is_frozen(self):
+        """RowmotionResult is a frozen dataclass."""
         ss = _build("end")
         result = analyze_rowmotion(ss)
+        assert isinstance(result, RowmotionResult)
+        with pytest.raises(AttributeError):
+            result.rowmotion_order = 99  # type: ignore[misc]
+
+    def test_end_analysis(self):
+        """Full analysis on 'end'."""
+        ss = _build("end")
+        result = analyze_rowmotion(ss)
+        assert len(result.order_ideals) == 2
+        assert len(result.antichains) == 2
         assert result.num_orbits >= 1
         assert result.rowmotion_order >= 1
 
-    def test_diamond_analysis(self):
-        ss = _build("&{a: &{c: end}, b: &{c: end}}")
+    def test_branch_analysis(self):
+        """Full analysis on &{a: end}."""
+        ss = _build("&{a: end}")
         result = analyze_rowmotion(ss)
-        assert result.rowmotion_order >= 1
+        assert len(result.order_ideals) == 3
+        assert len(result.antichains) == 3
+        assert result.rowmotion_order == 3
+
+    def test_all_fields_populated(self):
+        """All fields of RowmotionResult are populated correctly."""
+        ss = _boolean_lattice_2()
+        result = analyze_rowmotion(ss)
+        assert result.order_ideals is not None
+        assert result.antichains is not None
+        assert result.rowmotion_order == 4
+        assert len(result.orbit_sizes) == result.num_orbits
         assert sum(result.orbit_sizes) == len(result.order_ideals)
+        assert isinstance(result.is_homomesic_cardinality, bool)
+        assert result.toggle_sequence is not None
 
     def test_parallel_analysis(self):
+        """Full analysis on parallel composition."""
         ss = _build("(&{a: end} || &{b: end})")
         result = analyze_rowmotion(ss)
-        assert result.rowmotion_order >= 1
-        assert len(result.order_ideals) >= 4
+        assert len(result.order_ideals) == 6
+        assert result.rowmotion_order == 4
+        assert result.is_homomesic_cardinality is True
 
-    def test_selection(self):
-        ss = _build("+{ok: end, err: end}")
+    def test_orbit_sizes_sorted(self):
+        """Orbit sizes are returned sorted."""
+        ss = _boolean_lattice_2()
         result = analyze_rowmotion(ss)
-        assert isinstance(result, RowmotionResult)
-        assert result.rowmotion_order >= 1
+        assert result.orbit_sizes == sorted(result.orbit_sizes)
 
 
-# ---------------------------------------------------------------------------
-# Benchmark protocols
-# ---------------------------------------------------------------------------
+# =========================================================================
+# TestBenchmarks
+# =========================================================================
 
 class TestBenchmarks:
-    """Tests on standard benchmark protocols."""
+    """Tests on benchmark protocol session types."""
 
     def test_iterator(self):
+        """Java Iterator protocol."""
         ss = _build("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
         result = analyze_rowmotion(ss)
         assert result.rowmotion_order >= 1
         assert result.num_orbits >= 1
-
-    def test_smtp_like(self):
-        ss = _build("&{connect: &{auth: +{OK: &{send: &{quit: end}}, FAIL: &{quit: end}}}}")
-        result = analyze_rowmotion(ss)
-        assert result.rowmotion_order >= 1
-
-    def test_two_branch(self):
-        ss = _build("&{a: &{c: end}, b: &{d: end}}")
-        result = analyze_rowmotion(ss)
+        # Verify orbits partition ideals
         assert sum(result.orbit_sizes) == len(result.order_ideals)
 
-
-# ---------------------------------------------------------------------------
-# Edge cases
-# ---------------------------------------------------------------------------
-
-class TestEdgeCases:
-    """Edge case tests."""
-
-    def test_deeply_nested(self):
-        ss = _build("&{a: &{b: &{c: end}}}")
-        result = analyze_rowmotion(ss)
-        # Chain of 4: order ideals = 5
-        assert len(result.order_ideals) >= 4
-
-    def test_wide_branch(self):
-        ss = _build("&{a: end, b: end, c: end, d: end}")
+    def test_file_object(self):
+        """File Object protocol."""
+        ss = _build("&{open: rec X . &{read: +{data: X, eof: &{close: end}}}}")
         result = analyze_rowmotion(ss)
         assert result.rowmotion_order >= 1
+        assert sum(result.orbit_sizes) == len(result.order_ideals)
 
-    def test_toggle_sequence_length(self):
-        ss = _build("&{a: end, b: end}")
-        seq = toggle_sequence(ss)
-        rel = compute_order_relation(ss)
-        assert len(seq) == len(rel)
-
-    def test_frozen_result(self):
-        """RowmotionResult should be frozen."""
-        ss = _build("end")
+    def test_nested_selection(self):
+        """Nested selection: &{a: +{x: end, y: end}}."""
+        ss = _build("&{a: +{x: end, y: end}}")
         result = analyze_rowmotion(ss)
-        with pytest.raises(AttributeError):
-            result.rowmotion_order = 42  # type: ignore[misc]
+        assert result.num_orbits >= 1
+        assert sum(result.orbit_sizes) == len(result.order_ideals)
+
+    def test_smtp_like(self):
+        """SMTP-like protocol."""
+        ss = _build(
+            "&{connect: &{auth: +{OK: &{send: &{quit: end}}, "
+            "FAIL: &{quit: end}}}}"
+        )
+        result = analyze_rowmotion(ss)
+        assert result.rowmotion_order >= 1
+        assert sum(result.orbit_sizes) == len(result.order_ideals)
+
+    def test_simple_recursion(self):
+        """Simple recursive type: rec X . &{a: X, b: end}."""
+        ss = _build("rec X . &{a: X, b: end}")
+        result = analyze_rowmotion(ss)
+        assert result.rowmotion_order >= 1
+        assert result.num_orbits >= 1
+
+
+# =========================================================================
+# TestMathematicalProperties
+# =========================================================================
+
+class TestMathematicalProperties:
+    """Tests verifying key mathematical properties of rowmotion."""
+
+    def test_rowmotion_finite_order(self):
+        """Row^k = identity for some finite k on every finite poset."""
+        for type_str in ["end", "&{a: end}", "&{a: end, b: end}"]:
+            ss = _build(type_str)
+            order = rowmotion_order(ss)
+            for ideal in order_ideals(ss):
+                current = ideal
+                for _ in range(order):
+                    current = rowmotion_ideal(ss, current)
+                assert current == ideal, \
+                    f"Row^{order}({ideal}) != {ideal} for {type_str}"
+
+    def test_orbits_sum_to_total_ideals(self):
+        """Sum of orbit sizes = total number of order ideals."""
+        for ss in [_chain(2), _chain(3), _boolean_lattice_2()]:
+            orbits = all_orbits(ss)
+            total = sum(len(o) for o in orbits)
+            assert total == len(order_ideals(ss))
+
+    def test_antichain_ideal_bijection_is_perfect(self):
+        """#antichains = #order ideals (fundamental bijection)."""
+        for ss in [_chain(2), _chain(3), _boolean_lattice_2()]:
+            assert len(antichains(ss)) == len(order_ideals(ss))
+
+    def test_brouwer_schrijver_2x2(self):
+        """Product of [2] x [2]: rowmotion order = 2+2 = 4."""
+        ss = _boolean_lattice_2()
+        assert rowmotion_order(ss) == 4
+
+    def test_rowmotion_order_divides_ideal_count_factorial(self):
+        """Rowmotion order divides |Ideals|! (permutation group constraint)."""
+        ss = _boolean_lattice_2()
+        n = len(order_ideals(ss))
+        order = rowmotion_order(ss)
+        fact = math.factorial(n)
+        assert fact % order == 0
