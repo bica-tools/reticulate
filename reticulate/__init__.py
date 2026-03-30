@@ -52,6 +52,15 @@ from reticulate.lattice import (
     compute_join,
     compute_meet,
 )
+from reticulate.lgv import (
+    LGVResult,
+    analyze_lgv,
+    find_rank_layers,
+    lgv_determinant,
+    non_intersecting_count,
+    path_count_matrix,
+    verify_lgv,
+)
 from reticulate.morphism import (
     GaloisConnection,
     Morphism,
@@ -375,6 +384,20 @@ from reticulate.matrix import (
     tropical_eigenvalue,
     von_neumann_entropy,
     zeta_matrix,
+)
+from reticulate.tropical import (
+    TropicalResult,
+    analyze_tropical,
+    critical_graph,
+    max_cycle_mean,
+    tropical_add,
+    tropical_determinant,
+    tropical_distance,
+    tropical_eigenvector,
+    tropical_matrix_mul,
+    tropical_matrix_power,
+    tropical_mul,
+    tropical_spectral_radius,
 )
 from reticulate.marking_lattice import (
     MarkingLatticeResult,
