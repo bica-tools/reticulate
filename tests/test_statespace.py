@@ -507,3 +507,106 @@ class TestErrors:
     def test_unbound_variable(self) -> None:
         with pytest.raises(ValueError, match="unbound"):
             build_statespace(parse("X"))
+
+
+# ===================================================================
+# Synchronous product (⊗)
+# ===================================================================
+
+
+class TestSyncProduct:
+    """Tests for sync_product_statespace: lock-step parallel."""
+
+    def test_disjoint_labels_same_as_interleaved(self) -> None:
+        """With no shared labels, sync = interleaved."""
+        from reticulate.product import product_statespace, sync_product_statespace
+        ss1 = build_statespace(parse("&{a: end, b: end}"))
+        ss2 = build_statespace(parse("&{x: end, y: end}"))
+        inter = product_statespace(ss1, ss2)
+        sync = sync_product_statespace(ss1, ss2)
+        assert len(sync.states) == len(inter.states)
+        assert len(sync.transitions) == len(inter.transitions)
+
+    def test_same_labels_fewer_states(self) -> None:
+        """Shared labels synchronize → fewer reachable states."""
+        from reticulate.product import product_statespace, sync_product_statespace
+        ss1 = build_statespace(parse("rec X . &{step: X, done: end}"))
+        ss2 = build_statespace(parse("rec Y . &{step: Y, done: end}"))
+        inter = product_statespace(ss1, ss2)
+        sync = sync_product_statespace(ss1, ss2)
+        assert len(sync.states) < len(inter.states)
+
+    def test_iterator_sync_massive_reduction(self) -> None:
+        """Two identical iterators sync → 75% state reduction."""
+        from reticulate.product import product_statespace, sync_product_statespace
+        from reticulate.lattice import check_lattice
+        ss = build_statespace(parse("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}"))
+        inter = product_statespace(ss, ss)
+        sync = sync_product_statespace(ss, ss)
+        assert len(inter.states) == 16
+        assert len(sync.states) == 4
+        assert check_lattice(sync).is_lattice
+
+    def test_sync_is_lattice(self) -> None:
+        """Sync product of two lattices is a lattice."""
+        from reticulate.product import sync_product_statespace
+        from reticulate.lattice import check_lattice
+        ss1 = build_statespace(parse("&{a: end, b: end}"))
+        ss2 = build_statespace(parse("&{a: end, c: end}"))
+        sync = sync_product_statespace(ss1, ss2)
+        assert check_lattice(sync).is_lattice
+
+    def test_sync_top_bottom(self) -> None:
+        """Sync product has correct top and bottom."""
+        from reticulate.product import sync_product_statespace
+        ss1 = build_statespace(parse("&{a: end}"))
+        ss2 = build_statespace(parse("&{b: end}"))
+        sync = sync_product_statespace(ss1, ss2)
+        assert sync.top is not None
+        assert sync.bottom is not None
+        assert sync.top != sync.bottom
+
+    def test_sync_preserves_selection(self) -> None:
+        """Selection transitions propagate through sync product."""
+        from reticulate.product import sync_product_statespace
+        ss1 = build_statespace(parse("+{OK: end, ERR: end}"))
+        ss2 = build_statespace(parse("&{a: end}"))
+        sync = sync_product_statespace(ss1, ss2)
+        assert len(sync.selection_transitions) > 0
+
+    def test_sync_end_end(self) -> None:
+        """Sync product of two end types."""
+        from reticulate.product import sync_product_statespace
+        ss1 = build_statespace(parse("end"))
+        ss2 = build_statespace(parse("end"))
+        sync = sync_product_statespace(ss1, ss2)
+        assert len(sync.states) == 1
+
+    def test_sync_recursive_different_labels(self) -> None:
+        """Recursive types with different labels don't sync."""
+        from reticulate.product import product_statespace, sync_product_statespace
+        ss1 = build_statespace(parse("rec X . &{a: X, done: end}"))
+        ss2 = build_statespace(parse("rec Y . &{b: Y, done: end}"))
+        inter = product_statespace(ss1, ss2)
+        sync = sync_product_statespace(ss1, ss2)
+        # 'done' is shared so there's partial sync but 'a' and 'b' are independent
+        assert len(sync.states) <= len(inter.states)
+
+    def test_sync_n_ary(self) -> None:
+        """N-ary sync product works."""
+        from reticulate.product import sync_product_n
+        from reticulate.lattice import check_lattice
+        ss = build_statespace(parse("rec X . &{step: X, done: end}"))
+        sync3 = sync_product_n(ss, ss, ss)
+        assert check_lattice(sync3).is_lattice
+        # 3 identical voices syncing should be very small
+        assert len(sync3.states) <= 3
+
+    def test_sync_sub_poset_of_interleaved(self) -> None:
+        """Every sync state should correspond to a valid interleaved state."""
+        from reticulate.product import product_statespace, sync_product_statespace
+        ss1 = build_statespace(parse("&{a: &{b: end}}"))
+        ss2 = build_statespace(parse("&{a: &{c: end}}"))
+        sync = sync_product_statespace(ss1, ss2)
+        inter = product_statespace(ss1, ss2)
+        assert len(sync.states) <= len(inter.states)
