@@ -1,17 +1,17 @@
 """Tests for tropical eigenvalue analysis (Step 30l).
 
 Tests cover:
+- Tropical eigenspace computation and eigenvector equation verification
+- Subeigenspace and inequality verification
 - Critical components (SCCs of critical graph)
-- Cyclicity (gcd of critical cycle lengths)
-- Kleene star computation
-- Eigenspace and subeigenspace bases
-- Eigenspace dimension
-- CSR decomposition (index and period)
+- Cyclicity (GCD of critical cycle lengths)
+- CSR decomposition (index, period, periodicity verification)
+- Kleene star computation and algebraic identity
 - Definiteness check
 - Tropical characteristic polynomial
-- Tropical trace
-- Full analysis on various types
-- Benchmark protocols
+- Tropical trace and consistency with matrix powers
+- Full analysis on various session types
+- Benchmark protocols and cross-module agreement
 """
 
 import pytest
@@ -19,8 +19,13 @@ from reticulate.parser import parse
 from reticulate.statespace import build_statespace
 from reticulate.tropical import (
     tropical_eigenvalue,
+    tropical_spectral_radius,
     critical_graph,
+    tropical_matrix_mul,
+    tropical_matrix_power,
     _maxplus_adjacency_matrix,
+    tropical_add as _trop_add,
+    tropical_mul as _trop_mul,
     NEG_INF,
     INF,
 )
@@ -202,6 +207,42 @@ class TestCriticalComponents:
         firsts = [c[0] for c in comps]
         assert firsts == sorted(firsts)
 
+    def test_each_component_is_valid_scc(self):
+        """Each component is a valid SCC: elements are mutually reachable."""
+        ss = _build("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
+        comps = critical_components(ss)
+        from reticulate.zeta import _adjacency
+        adj = _adjacency(ss)
+        for comp in comps:
+            comp_set = set(comp)
+            for s in comp:
+                if len(comp) > 1:
+                    reachable: set[int] = set()
+                    stack = list(adj.get(s, []))
+                    while stack:
+                        node = stack.pop()
+                        if node in reachable:
+                            continue
+                        reachable.add(node)
+                        stack.extend(adj.get(node, []))
+                    assert comp_set & reachable, (
+                        f"State {s} cannot reach other component members"
+                    )
+
+    def test_component_states_are_valid(self):
+        """All component elements are valid state IDs."""
+        ss = _build("rec X . &{a: X, b: end}")
+        comps = critical_components(ss)
+        for comp in comps:
+            for s in comp:
+                assert s in ss.states
+
+    def test_parallel_no_critical(self):
+        """Parallel acyclic: no critical components."""
+        ss = _build("(&{a: end} || &{b: end})")
+        comps = critical_components(ss)
+        assert comps == []
+
 
 # ---------------------------------------------------------------------------
 # Cyclicity tests
@@ -230,6 +271,25 @@ class TestCyclicity:
         ss = _build("rec X . &{a: X, b: end}")
         cyc = cyclicity(ss)
         assert cyc >= 1
+
+    def test_iterator_cyclicity_positive(self):
+        """Iterator protocol has positive cyclicity."""
+        ss = _build("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
+        cyc = cyclicity(ss)
+        assert cyc > 0
+        assert isinstance(cyc, int)
+
+    def test_parallel_cyclicity_zero(self):
+        """Parallel acyclic: cyclicity 0."""
+        ss = _build("(&{a: end} || &{b: end})")
+        assert cyclicity(ss) == 0
+
+    def test_cyclicity_positive_for_all_cyclic(self):
+        """All cyclic graphs have positive cyclicity."""
+        for typ in ["rec X . &{a: X}", "rec X . &{a: X, b: end}",
+                     "rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}"]:
+            ss = _build(typ)
+            assert cyclicity(ss) > 0, f"Expected positive cyclicity for {typ}"
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +345,36 @@ class TestKleeneStar:
         ks = kleene_star(ss)
         assert ks is not None
 
+    def test_kleene_star_identity_property(self):
+        """A* = I + A * A* for acyclic graphs."""
+        ss = _build("&{a: &{b: end}}")
+        star = kleene_star(ss)
+        assert star is not None
+        A = _maxplus_adjacency_matrix(ss)
+        n = len(A)
+        I = [[NEG_INF] * n for _ in range(n)]
+        for i in range(n):
+            I[i][i] = 0.0
+        A_star_A = tropical_matrix_mul(star, A)
+        I_plus = _tropical_matrix_add(I, A_star_A)
+        assert _matrices_equal(star, I_plus), (
+            "Kleene star identity A* = I + A*.A failed"
+        )
+
+    def test_kleene_star_diagonal_zero(self):
+        """Diagonal entries of Kleene star should be 0."""
+        ss = _build("&{a: &{b: end}}")
+        star = kleene_star(ss)
+        assert star is not None
+        for i in range(len(star)):
+            assert star[i][i] == 0.0
+
+    def test_spectral_radius_gt_zero_means_none(self):
+        """When spectral radius > 0, Kleene star should be None."""
+        ss = _build("rec X . &{a: X, b: end}")
+        assert tropical_spectral_radius(ss) > 0.0
+        assert kleene_star(ss) is None
+
 
 # ---------------------------------------------------------------------------
 # Eigenspace tests
@@ -322,6 +412,47 @@ class TestTropicalEigenspace:
         for vec in basis:
             assert all(isinstance(v, float) for v in vec)
 
+    def test_eigenvector_equation_simple_rec(self):
+        """Verify A (x) v = lambda (x) v for rec X . &{a: X, b: end}."""
+        ss = _build("rec X . &{a: X, b: end}")
+        A = _maxplus_adjacency_matrix(ss)
+        lam = tropical_eigenvalue(ss)
+        basis = tropical_eigenspace(ss)
+        assert lam == 1.0
+        for v in basis:
+            Av = _tropical_matrix_vec(A, v)
+            lam_v = [_trop_mul(lam, vi) for vi in v]
+            for a_val, l_val in zip(Av, lam_v):
+                if a_val == NEG_INF and l_val == NEG_INF:
+                    continue
+                assert abs(a_val - l_val) < 1e-9, (
+                    f"Eigenvector equation failed: Av={Av}, lam*v={lam_v}"
+                )
+
+    def test_eigenvector_equation_iterator(self):
+        """Verify A (x) v = lambda (x) v for Iterator protocol."""
+        ss = _build("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
+        A = _maxplus_adjacency_matrix(ss)
+        lam = tropical_eigenvalue(ss)
+        basis = tropical_eigenspace(ss)
+        assert lam == 1.0
+        for v in basis:
+            Av = _tropical_matrix_vec(A, v)
+            lam_v = [_trop_mul(lam, vi) for vi in v]
+            for a_val, l_val in zip(Av, lam_v):
+                if a_val == NEG_INF and l_val == NEG_INF:
+                    continue
+                assert abs(a_val - l_val) < 1e-9
+
+    def test_dimension_equals_eigenspace_size(self):
+        """eigenspace_dimension == len(tropical_eigenspace) across types."""
+        for typ in ["end", "&{a: end}", "rec X . &{a: X, b: end}",
+                     "(&{a: end} || &{b: end})"]:
+            ss = _build(typ)
+            dim = eigenspace_dimension(ss)
+            basis = tropical_eigenspace(ss)
+            assert dim == len(basis), f"Mismatch for {typ}"
+
 
 class TestTropicalSubeigenspace:
 
@@ -346,6 +477,22 @@ class TestTropicalSubeigenspace:
         ss = _build("rec X . &{a: X, b: end}")
         basis = tropical_subeigenspace(ss)
         assert len(basis) >= 1
+
+    def test_subeigenvector_satisfies_inequality(self):
+        """Each subeigenvector v satisfies A (x) v <= lambda (x) v."""
+        ss = _build("rec X . &{a: X, b: end}")
+        A = _maxplus_adjacency_matrix(ss)
+        lam = tropical_eigenvalue(ss)
+        subvecs = tropical_subeigenspace(ss)
+        for v in subvecs:
+            Av = _tropical_matrix_vec(A, v)
+            for i in range(len(v)):
+                lam_vi = _trop_mul(lam, v[i])
+                if Av[i] > NEG_INF and lam_vi > NEG_INF:
+                    assert Av[i] <= lam_vi + 1e-9, (
+                        f"Subeigenspace inequality violated at i={i}: "
+                        f"Av[i]={Av[i]}, lam+v[i]={lam_vi}"
+                    )
 
 
 class TestEigenspaceDimension:
@@ -415,6 +562,42 @@ class TestCSRDecomposition:
         k0, c = csr_decomposition(ss)
         assert k0 >= 0
 
+    def test_csr_periodicity_holds(self):
+        """Verify A^{k+c} = lambda^c * A^k for k >= k0."""
+        ss = _build("rec X . &{a: X, b: end}")
+        A = _maxplus_adjacency_matrix(ss)
+        lam = tropical_eigenvalue(ss)
+        k0, c = csr_decomposition(ss)
+        assert lam > 0.0
+        Ak = tropical_matrix_power(A, k0)
+        Akc = tropical_matrix_power(A, k0 + c)
+        shifted = _tropical_matrix_scalar(Ak, lam * c)
+        assert _matrices_equal(Akc, shifted), (
+            f"CSR periodicity failed: k0={k0}, c={c}"
+        )
+
+    def test_csr_periodicity_iterator(self):
+        """CSR periodicity verification for Iterator protocol."""
+        ss = _build("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
+        A = _maxplus_adjacency_matrix(ss)
+        lam = tropical_eigenvalue(ss)
+        k0, c = csr_decomposition(ss)
+        assert lam > 0.0
+        Ak = tropical_matrix_power(A, k0)
+        Akc = tropical_matrix_power(A, k0 + c)
+        shifted = _tropical_matrix_scalar(Ak, lam * c)
+        assert _matrices_equal(Akc, shifted), (
+            f"CSR failed for Iterator: k0={k0}, c={c}"
+        )
+
+    def test_csr_period_matches_cyclicity(self):
+        """CSR period should equal cyclicity for cyclic graphs."""
+        ss = _build("rec X . &{a: X, b: end}")
+        _, c = csr_decomposition(ss)
+        cyc = cyclicity(ss)
+        if cyc > 0:
+            assert c == cyc
+
 
 # ---------------------------------------------------------------------------
 # Definiteness tests
@@ -473,11 +656,29 @@ class TestTropicalCharacteristicPolynomial:
         for c in poly:
             assert isinstance(c, float)
 
+    def test_length_n_plus_1_parametric(self):
+        """Polynomial has n+1 coefficients for n states across various types."""
+        for typ in ["end", "&{a: end}", "&{a: &{b: end}}",
+                     "rec X . &{a: X, b: end}"]:
+            ss = _build(typ)
+            poly = tropical_characteristic_polynomial(ss)
+            n = len(ss.states)
+            assert len(poly) == n + 1, (
+                f"Expected {n+1} coefficients for {typ}, got {len(poly)}"
+            )
+
     def test_last_coeff_is_zero(self):
         """c_n = 0 (tropical identity for empty matching)."""
         ss = _build("&{a: end, b: end}")
         poly = tropical_characteristic_polynomial(ss)
         assert poly[-1] == 0.0
+
+    def test_recursive_has_nontrivial_coefficients(self):
+        """Recursive type has some finite (non -inf) coefficients beyond c_n."""
+        ss = _build("rec X . &{a: X, b: end}")
+        poly = tropical_characteristic_polynomial(ss)
+        finite_count = sum(1 for c in poly if c > NEG_INF)
+        assert finite_count >= 2
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +727,35 @@ class TestTropicalTrace:
         assert isinstance(tr1, float)
         assert isinstance(tr2, float)
         assert isinstance(tr3, float)
+
+    def test_trace_consistent_with_matrix_power(self):
+        """tr_k(A) should equal max diagonal of A^k."""
+        ss = _build("rec X . &{a: X, b: end}")
+        A = _maxplus_adjacency_matrix(ss)
+        for k in [1, 2, 3]:
+            Ak = tropical_matrix_power(A, k)
+            max_diag = max(Ak[i][i] for i in range(len(Ak)))
+            tk = tropical_trace(ss, k)
+            assert abs(tk - max_diag) < 1e-9, (
+                f"Trace mismatch at k={k}: tr={tk}, max_diag={max_diag}"
+            )
+
+    def test_trace_1_is_max_diagonal(self):
+        """tr_1(A) = max diagonal of adjacency matrix."""
+        ss = _build("rec X . &{a: X, b: end}")
+        A = _maxplus_adjacency_matrix(ss)
+        max_diag = max(A[i][i] for i in range(len(A)))
+        t1 = tropical_trace(ss, 1)
+        assert abs(t1 - max_diag) < 1e-9
+
+    def test_trace_cyclic_monotone_values(self):
+        """For unit-weight self-loop, tr_k = k * lambda."""
+        ss = _build("rec X . &{a: X, b: end}")
+        lam = tropical_eigenvalue(ss)
+        assert lam == 1.0
+        for k in [1, 2, 3]:
+            tk = tropical_trace(ss, k)
+            assert tk == k * lam
 
 
 # ---------------------------------------------------------------------------
@@ -694,3 +924,39 @@ class TestBenchmarks:
         assert len(result.critical_components) >= 1
         assert result.csr_index >= 0
         assert result.csr_period >= 1
+
+    def test_smtp_simple(self):
+        """Simple SMTP: acyclic chain."""
+        ss = _build("&{EHLO: &{MAIL: &{RCPT: &{DATA: end}}}}")
+        result = analyze_tropical_eigen(ss)
+        assert result.eigenvalue == 0.0
+        assert result.eigenvalue == tropical_eigenvalue(ss)
+        assert result.kleene_star is not None
+
+    def test_two_branch(self):
+        """Two-branch protocol: acyclic."""
+        ss = _build("&{a: end, b: end}")
+        result = analyze_tropical_eigen(ss)
+        assert result.eigenvalue == 0.0
+        assert result.eigenvalue == tropical_eigenvalue(ss)
+
+    def test_eigenvalue_agrees_with_tropical_module(self):
+        """Eigenvalue from analyze matches tropical_eigenvalue and spectral_radius."""
+        types = [
+            "end",
+            "&{a: end}",
+            "&{a: &{b: end}}",
+            "&{a: end, b: end}",
+            "rec X . &{a: X, b: end}",
+            "rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}",
+            "(&{a: end} || &{b: end})",
+        ]
+        for typ in types:
+            ss = _build(typ)
+            result = analyze_tropical_eigen(ss)
+            assert result.eigenvalue == tropical_eigenvalue(ss), (
+                f"Eigenvalue mismatch for {typ}"
+            )
+            assert result.eigenvalue == tropical_spectral_radius(ss), (
+                f"Spectral radius mismatch for {typ}"
+            )
