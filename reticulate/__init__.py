@@ -44,6 +44,18 @@ from reticulate.coverage import (
     coverage_storyboard,
     render_storyboard,
 )
+from reticulate.ihara import (
+    IharaResult,
+    analyze_ihara,
+    bass_hashimoto_matrix,
+    count_prime_cycles,
+    cycle_rank,
+    graph_complexity,
+    ihara_determinant,
+    ihara_poles,
+    is_ramanujan,
+    prime_cycle_lengths,
+)
 from reticulate.random_walk import (
     RandomWalkResult,
     all_hitting_times,
@@ -58,6 +70,18 @@ from reticulate.random_walk import (
     spectral_gap,
     stationary_distribution,
     transition_matrix,
+)
+from reticulate.ihara import (
+    IharaResult,
+    analyze_ihara,
+    bass_hashimoto_matrix,
+    count_prime_cycles,
+    cycle_rank,
+    graph_complexity,
+    ihara_determinant,
+    ihara_poles,
+    is_ramanujan,
+    prime_cycle_lengths,
 )
 from reticulate.heat_kernel import (
     HeatKernelResult,
