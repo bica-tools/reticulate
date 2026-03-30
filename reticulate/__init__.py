@@ -146,6 +146,14 @@ from reticulate.parser import (
     pretty_program,
     tokenize,
 )
+from reticulate.dos_resistance import (
+    DoSResult,
+    analyze_dos_resistance,
+    dos_surface,
+    kemeny_vulnerability,
+    throughput_bottleneck,
+    width_exposure,
+)
 from reticulate.resolve import ResolveError, resolve
 from reticulate.resource_leak import (
     ResourceLeakResult,
