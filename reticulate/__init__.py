@@ -194,6 +194,27 @@ from reticulate.reticular import (
     is_reticulate,
     reconstruct,
 )
+from reticulate.deadlock import (
+    BlackHoleResult,
+    BufferDeadlockResult,
+    CompositionalResult,
+    DeadlockAnalysis,
+    DeadlockState,
+    LatticeCertificate,
+    ReticularCertificate,
+    SiphonTrapResult,
+    SpectralRisk,
+    analyze_deadlock,
+    black_hole_detection,
+    buffer_deadlock_analysis,
+    compositional_deadlock_check,
+    detect_deadlocks,
+    is_deadlock_free,
+    lattice_deadlock_certificate,
+    reticular_deadlock_certificate,
+    siphon_trap_analysis,
+    spectral_deadlock_risk,
+)
 from reticulate.duality import (
     DualityResult,
     check_duality,
