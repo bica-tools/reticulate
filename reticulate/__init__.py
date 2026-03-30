@@ -399,6 +399,20 @@ from reticulate.tropical import (
     tropical_mul,
     tropical_spectral_radius,
 )
+from reticulate.tropical_determinant import (
+    TropicalDetResult,
+    all_tropical_minors,
+    analyze_tropical_determinant,
+    hungarian_assignment,
+    is_tropically_singular,
+    optimal_permutations,
+    tropical_adjugate,
+    tropical_cramer,
+    tropical_det,
+    tropical_det_from_ss,
+    tropical_minor,
+    tropical_rank,
+)
 from reticulate.tropical_eigen import (
     TropicalEigenResult,
     analyze_tropical_eigen,
