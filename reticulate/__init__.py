@@ -147,6 +147,15 @@ from reticulate.parser import (
     tokenize,
 )
 from reticulate.resolve import ResolveError, resolve
+from reticulate.resource_leak import (
+    ResourceLeakResult,
+    WidthProfile,
+    analyze_resource_leaks,
+    detect_resource_leaks,
+    parallel_completion_check,
+    resource_monotonicity,
+    width_profile,
+)
 from reticulate.product import product_statespace
 from reticulate.sugar import desugar, ensugar
 from reticulate.statespace import StateSpace, build_statespace, build_statespace_from_program, truncate_back_edges
@@ -903,6 +912,55 @@ from reticulate.visualize import (
     role_dot_source,
     role_hasse_diagram,
     role_render_hasse,
+)
+from reticulate.zeta_polynomial import (
+    ZetaPolynomialResult,
+    analyze_zeta_polynomial,
+    chain_count,
+    chains_top_to_bottom,
+    all_chain_counts,
+    is_palindromic,
+    multichain_count,
+    whitney_numbers_second_kind,
+    zeta_polynomial,
+    zeta_polynomial_coefficients,
+)
+from reticulate.incidence_algebra import (
+    ConvolutionResult,
+    IncidenceAlgebraResult,
+    IncidenceFunc,
+    add,
+    analyze_incidence_algebra,
+    convolve,
+    constant_element,
+    delta_element,
+    incidence_function,
+    indicator_element,
+    inverse,
+    is_commutative_pair,
+    is_multiplicative,
+    mobius_element,
+    nilpotent_index,
+    power,
+    rank_element,
+    scalar_mul,
+    subtract,
+    verify_convolution_identity,
+    verify_mobius_involution,
+    zeta_element,
+)
+from reticulate.species import (
+    SpeciesResult,
+    analyze_species,
+    automorphism_group_size,
+    cycle_index,
+    exponential_formula_terms,
+    find_automorphisms,
+    isomorphism_types,
+    species_product,
+    species_sum,
+    symmetry_factor,
+    type_generating_series,
 )
 
 __all__ = [
