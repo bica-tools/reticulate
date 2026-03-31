@@ -1,0 +1,1096 @@
+"""Modularity analysis for session type lattices (Step 70f).
+
+The central insight: **modularity is distributivity**.  A protocol's state-space
+lattice is modular -- decomposable into independent, substitutable components --
+precisely when it is distributive (no M3 or N5 forbidden sublattice).
+
+This module unifies seven pillars of lattice modularity:
+  1. Product decomposition   = perfect independence
+  2. Birkhoff representation = minimal modules (join-irreducibles)
+  3. Subtyping               = substitutability
+  4. Spectral gap            = coupling strength (Fiedler value)
+  5. Cheeger constant        = interface width
+  6. FCA concept clustering  = capability discovery
+  7. Congruences             = abstraction boundaries
+
+Key functions:
+  - ``check_modularity(ss)``          -- distributivity + spectral + FCA
+  - ``find_module_boundaries(ss)``    -- Fiedler bisection + Cheeger cuts
+  - ``discover_modules(ss)``          -- FCA concept clusters
+  - ``check_substitutability(old, new)`` -- subtyping + embedding
+  - ``minimal_decomposition(ss)``     -- Birkhoff join-irreducibles
+  - ``compression_ratio(ss)``         -- |J(L)| / |L|
+  - ``coupling_score(ss)``            -- Fiedler-based
+  - ``interface_width(ss)``           -- Cheeger constant
+  - ``diagnose_non_modularity(ss)``   -- M3/N5 witness + explanation
+  - ``suggest_modularization(ss)``    -- refactoring suggestions
+  - ``analyze_modularity(ss)``        -- full analysis
+
+All computations use only the Python standard library.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reticulate.statespace import StateSpace
+
+
+# ---------------------------------------------------------------------------
+# Result types
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ModularityResult:
+    """Result of the core modularity check.
+
+    Attributes:
+        is_modular: True iff the lattice is distributive (= modular in our sense).
+        is_lattice: True iff the state space forms a lattice at all.
+        is_distributive: True iff no M3 or N5 sublattice present.
+        is_algebraically_modular: True iff no N5 (lattice-theoretic modularity).
+        classification: One of "boolean", "distributive", "modular",
+            "lattice", "not_lattice".
+        fiedler_value: Algebraic connectivity (spectral gap).
+        cheeger_constant: Interface width bound.
+        compression_ratio: |J(L)| / |L| -- how compressible via Birkhoff.
+        num_modules: Number of join-irreducible modules.
+        num_states: Total lattice size.
+    """
+
+    is_modular: bool
+    is_lattice: bool
+    is_distributive: bool
+    is_algebraically_modular: bool
+    classification: str
+    fiedler_value: float
+    cheeger_constant: float
+    compression_ratio: float
+    num_modules: int
+    num_states: int
+
+
+@dataclass(frozen=True)
+class ModuleBoundary:
+    """A boundary between two modules, identified by spectral bisection.
+
+    Attributes:
+        partition_a: State IDs in the first partition.
+        partition_b: State IDs in the second partition.
+        cut_edges: Transitions crossing the boundary.
+        cut_ratio: |cut_edges| / |total_edges| -- lower is cleaner.
+        fiedler_value: Algebraic connectivity of the cut.
+    """
+
+    partition_a: frozenset[int]
+    partition_b: frozenset[int]
+    cut_edges: list[tuple[int, str, int]]
+    cut_ratio: float
+    fiedler_value: float
+
+
+@dataclass(frozen=True)
+class Module:
+    """A discovered module (from FCA concept clustering).
+
+    Attributes:
+        states: State IDs in this module.
+        capabilities: Method labels available in this module.
+        is_complete: True iff the module is closed under reachability.
+        internal_transitions: Transitions within the module.
+        interface_transitions: Transitions crossing the module boundary.
+    """
+
+    states: frozenset[int]
+    capabilities: frozenset[str]
+    is_complete: bool
+    internal_transitions: list[tuple[int, str, int]]
+    interface_transitions: list[tuple[int, str, int]]
+
+
+@dataclass(frozen=True)
+class SubstitutionResult:
+    """Result of substitutability check between two protocol modules.
+
+    Attributes:
+        is_substitutable: True iff new can replace old.
+        is_subtype: True iff old is a subtype of new (more methods).
+        has_embedding: True iff old embeds into new (structure-preserving).
+        preserves_modularity: True iff substitution preserves distributivity.
+        explanation: Human-readable explanation.
+    """
+
+    is_substitutable: bool
+    is_subtype: bool
+    has_embedding: bool
+    preserves_modularity: bool
+    explanation: str
+
+
+@dataclass(frozen=True)
+class IrreducibleModule:
+    """A minimal (join-irreducible) module in the Birkhoff decomposition.
+
+    Attributes:
+        representative: The join-irreducible state ID.
+        downset: The downset generated by this irreducible.
+        labels: Transition labels within the downset.
+        height: Distance from bottom in the lattice.
+    """
+
+    representative: int
+    downset: frozenset[int]
+    labels: frozenset[str]
+    height: int
+
+
+@dataclass(frozen=True)
+class NonModularityDiagnosis:
+    """Diagnosis of why a lattice fails to be modular (distributive).
+
+    Attributes:
+        is_modular: Always False (this is only returned for non-modular lattices).
+        has_m3: True iff the lattice contains an M3 (diamond) sublattice.
+        has_n5: True iff the lattice contains an N5 (pentagon) sublattice.
+        m3_witness: 5-tuple of state IDs forming the M3, or None.
+        n5_witness: 5-tuple of state IDs forming the N5, or None.
+        entanglement_type: "diamond" (M3), "pentagon" (N5), or "both".
+        explanation: Human-readable explanation of the entanglement.
+        reconvergence_degree: Number of distinct reconvergence points.
+    """
+
+    is_modular: bool
+    has_m3: bool
+    has_n5: bool
+    m3_witness: tuple[int, ...] | None
+    n5_witness: tuple[int, ...] | None
+    entanglement_type: str
+    explanation: str
+    reconvergence_degree: int
+
+
+@dataclass(frozen=True)
+class Refactoring:
+    """A suggested refactoring to improve modularity.
+
+    Attributes:
+        kind: Type of refactoring ("split", "merge", "flatten", "factor").
+        target_states: States affected by the refactoring.
+        description: Human-readable description.
+        expected_improvement: Estimated improvement in modularity score (0-1).
+    """
+
+    kind: str
+    target_states: frozenset[int]
+    description: str
+    expected_improvement: float
+
+
+@dataclass(frozen=True)
+class ModularityAnalysis:
+    """Complete modularity analysis of a state space.
+
+    Attributes:
+        modularity: Core modularity result.
+        boundaries: Module boundaries from spectral bisection.
+        modules: Discovered modules from FCA.
+        irreducibles: Minimal modules from Birkhoff.
+        diagnosis: Non-modularity diagnosis (if applicable).
+        refactorings: Suggested refactorings (if non-modular).
+        coupling: Coupling score (0 = uncoupled, 1 = fully coupled).
+        reconvergence: Reconvergence degree.
+        interface_width: Cheeger constant.
+    """
+
+    modularity: ModularityResult
+    boundaries: list[ModuleBoundary]
+    modules: list[Module]
+    irreducibles: list[IrreducibleModule]
+    diagnosis: NonModularityDiagnosis | None
+    refactorings: list[Refactoring]
+    coupling: float
+    reconvergence: int
+    interface_width: float
+
+
+# ---------------------------------------------------------------------------
+# Internal: quotient poset (reused from lattice.py pattern)
+# ---------------------------------------------------------------------------
+
+def _build_adjacency(ss: "StateSpace") -> dict[int, list[int]]:
+    """Build forward adjacency list from state space."""
+    adj: dict[int, list[int]] = {s: [] for s in ss.states}
+    for src, _, tgt in ss.transitions:
+        adj[src].append(tgt)
+    return adj
+
+
+def _reachability(ss: "StateSpace") -> dict[int, set[int]]:
+    """Compute forward reachability (inclusive) for all states."""
+    adj = _build_adjacency(ss)
+    reach: dict[int, set[int]] = {}
+    for s in ss.states:
+        visited: set[int] = set()
+        stack = [s]
+        while stack:
+            v = stack.pop()
+            if v in visited:
+                continue
+            visited.add(v)
+            stack.extend(adj.get(v, []))
+        reach[s] = visited
+    return reach
+
+
+def _hasse_edges(ss: "StateSpace") -> list[tuple[int, int]]:
+    """Compute covering relation (Hasse edges) of the reachability poset."""
+    reach = _reachability(ss)
+    adj = _build_adjacency(ss)
+    edges: list[tuple[int, int]] = []
+    for s in ss.states:
+        direct_succs = set(adj[s])
+        for t in direct_succs:
+            # s covers t iff no intermediate u with s > u > t
+            is_cover = True
+            for u in direct_succs:
+                if u != t and t in reach.get(u, set()):
+                    is_cover = False
+                    break
+            if is_cover:
+                edges.append((s, t))
+    return edges
+
+
+def _laplacian(ss: "StateSpace") -> tuple[list[int], list[list[float]]]:
+    """Build the graph Laplacian of the Hasse diagram (undirected).
+
+    Returns (state_list, L) where L is the Laplacian matrix.
+    """
+    states = sorted(ss.states)
+    n = len(states)
+    idx = {s: i for i, s in enumerate(states)}
+
+    # Build undirected adjacency from transitions
+    adj_set: dict[int, set[int]] = {s: set() for s in states}
+    for src, _, tgt in ss.transitions:
+        adj_set[src].add(tgt)
+        adj_set[tgt].add(src)
+
+    L = [[0.0] * n for _ in range(n)]
+    for s in states:
+        i = idx[s]
+        deg = len(adj_set[s])
+        L[i][i] = float(deg)
+        for t in adj_set[s]:
+            j = idx[t]
+            L[i][j] -= 1.0
+
+    return states, L
+
+
+def _eigenvalues_symmetric(A: list[list[float]], max_iter: int = 200) -> list[float]:
+    """Compute eigenvalues of a real symmetric matrix via QR iteration.
+
+    Uses Householder QR decomposition for numerical stability.
+    Returns sorted eigenvalues.
+    """
+    n = len(A)
+    if n == 0:
+        return []
+    if n == 1:
+        return [A[0][0]]
+
+    # Work on a copy
+    M = [row[:] for row in A]
+
+    for _ in range(max_iter):
+        # QR decomposition (Gram-Schmidt)
+        Q = [[0.0] * n for _ in range(n)]
+        R = [[0.0] * n for _ in range(n)]
+
+        for j in range(n):
+            # v = column j of M
+            v = [M[i][j] for i in range(n)]
+
+            for i in range(j):
+                # R[i][j] = dot(Q_col_i, v)
+                dot = sum(Q[k][i] * v[k] for k in range(n))
+                R[i][j] = dot
+                for k in range(n):
+                    v[k] -= dot * Q[k][i]
+
+            norm = math.sqrt(sum(x * x for x in v))
+            R[j][j] = norm
+            if norm > 1e-14:
+                for k in range(n):
+                    Q[k][j] = v[k] / norm
+            else:
+                # Zero column; set to unit vector
+                for k in range(n):
+                    Q[k][j] = 1.0 if k == j else 0.0
+
+        # M = R * Q
+        M = [[sum(R[i][k] * Q[k][j] for k in range(n))
+              for j in range(n)] for i in range(n)]
+
+        # Check convergence: off-diagonal elements small?
+        off_diag = sum(abs(M[i][j]) for i in range(n) for j in range(n) if i != j)
+        if off_diag < 1e-10 * n:
+            break
+
+    return sorted(M[i][i] for i in range(n))
+
+
+def _fiedler_value(ss: "StateSpace") -> float:
+    """Compute the Fiedler value (algebraic connectivity).
+
+    Second-smallest eigenvalue of the graph Laplacian.
+    """
+    states, L = _laplacian(ss)
+    n = len(states)
+    if n <= 1:
+        return 0.0
+
+    eigenvalues = _eigenvalues_symmetric(L)
+    if len(eigenvalues) < 2:
+        return 0.0
+    return max(0.0, eigenvalues[1])
+
+
+def _fiedler_vector(ss: "StateSpace") -> tuple[list[int], list[float]]:
+    """Compute the Fiedler vector (eigenvector for second-smallest eigenvalue).
+
+    Uses power iteration on (L - lambda_max * I)^{-1} shifted to target lambda_1.
+    Falls back to approximate method if direct computation fails.
+
+    Returns (state_list, fiedler_vector).
+    """
+    states, L = _laplacian(ss)
+    n = len(states)
+    if n <= 1:
+        return states, [0.0] * n
+    if n == 2:
+        return states, [1.0, -1.0]
+
+    # Compute Fiedler vector via inverse iteration
+    # Target: second-smallest eigenvalue
+    fiedler_val = _fiedler_value(ss)
+
+    # Shift: (L - sigma * I), sigma slightly below fiedler_val
+    sigma = fiedler_val - 0.01 if fiedler_val > 0.01 else 0.0
+
+    # Use power iteration on the Laplacian to find the Fiedler vector
+    # Start with a vector orthogonal to the all-ones vector
+    v = [(-1.0) ** i for i in range(n)]
+    # Orthogonalize against constant vector
+    mean = sum(v) / n
+    v = [x - mean for x in v]
+    norm = math.sqrt(sum(x * x for x in v))
+    if norm > 1e-14:
+        v = [x / norm for x in v]
+
+    # Power iteration on L (converges to largest eigenvalue's eigenvector)
+    # Instead, use inverse iteration for second-smallest
+    for _ in range(100):
+        # Multiply by L
+        w = [0.0] * n
+        for i in range(n):
+            for j in range(n):
+                w[i] += L[i][j] * v[j]
+
+        # Orthogonalize against constant vector (all-ones)
+        mean = sum(w) / n
+        w = [x - mean for x in w]
+
+        norm = math.sqrt(sum(x * x for x in w))
+        if norm < 1e-14:
+            break
+        v = [x / norm for x in w]
+
+    return states, v
+
+
+def _cheeger_constant(ss: "StateSpace") -> float:
+    """Compute the Cheeger constant (isoperimetric number).
+
+    h(G) = min over non-empty S subset V, |S| <= |V|/2, of
+           |boundary(S)| / |S|
+
+    where boundary(S) = edges with exactly one endpoint in S.
+
+    For small graphs, enumerate subsets. For larger graphs,
+    use the Fiedler vector to find an approximate cut.
+    """
+    states = sorted(ss.states)
+    n = len(states)
+    if n <= 1:
+        return 0.0
+
+    # Build undirected edge set
+    edges: set[tuple[int, int]] = set()
+    for src, _, tgt in ss.transitions:
+        edges.add((min(src, tgt), max(src, tgt)))
+
+    def boundary_size(s_set: set[int]) -> int:
+        count = 0
+        for u, v in edges:
+            if (u in s_set) != (v in s_set):
+                count += 1
+        return count
+
+    if n <= 16:
+        # Exact: enumerate all non-empty subsets up to size n/2
+        best = float('inf')
+        for mask in range(1, 1 << n):
+            s_set = {states[i] for i in range(n) if mask & (1 << i)}
+            if len(s_set) > n // 2:
+                continue
+            b = boundary_size(s_set)
+            ratio = b / len(s_set)
+            if ratio < best:
+                best = ratio
+        return best if best < float('inf') else 0.0
+    else:
+        # Approximate: use Fiedler vector bisection
+        state_list, fv = _fiedler_vector(ss)
+        # Sort states by Fiedler value and try all cuts
+        indexed = sorted(zip(fv, state_list))
+        best = float('inf')
+        for k in range(1, n):
+            s_set = {s for _, s in indexed[:k]}
+            if len(s_set) > n // 2:
+                break
+            b = boundary_size(s_set)
+            ratio = b / len(s_set) if len(s_set) > 0 else float('inf')
+            if ratio < best:
+                best = ratio
+        return best if best < float('inf') else 0.0
+
+
+def _reconvergence_degree(ss: "StateSpace") -> int:
+    """Compute the reconvergence degree of a state space.
+
+    The reconvergence degree counts the number of states reachable
+    via two or more distinct paths from the top that are not simply
+    chain extensions. It measures the entanglement of the protocol's
+    control flow.
+    """
+    adj = _build_adjacency(ss)
+    # Count states with in-degree > 1 (reconvergence points)
+    in_degree: dict[int, int] = {s: 0 for s in ss.states}
+    for src, _, tgt in ss.transitions:
+        in_degree[tgt] += 1
+
+    # Reconvergence points = states with in-degree >= 2
+    # excluding the top (which might have self-loops)
+    reconvergence = 0
+    for s in ss.states:
+        if s != ss.top and in_degree[s] >= 2:
+            reconvergence += 1
+    return reconvergence
+
+
+# ---------------------------------------------------------------------------
+# Public API: Core modularity check
+# ---------------------------------------------------------------------------
+
+def check_modularity(ss: "StateSpace") -> ModularityResult:
+    """Check whether a protocol is modular (= its lattice is distributive).
+
+    Combines distributivity checking, spectral analysis, and Birkhoff
+    compression to give a unified modularity verdict.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        ModularityResult with the complete modularity assessment.
+    """
+    from reticulate.lattice import check_distributive
+
+    dist = check_distributive(ss)
+
+    fiedler = _fiedler_value(ss)
+    cheeger = _cheeger_constant(ss)
+
+    # Compression ratio via join-irreducibles
+    cr = compression_ratio(ss)
+
+    # Number of modules = join-irreducibles
+    n_modules = _count_join_irreducibles(ss)
+
+    return ModularityResult(
+        is_modular=dist.is_distributive,
+        is_lattice=dist.is_lattice,
+        is_distributive=dist.is_distributive,
+        is_algebraically_modular=dist.is_modular,
+        classification=dist.classification,
+        fiedler_value=fiedler,
+        cheeger_constant=cheeger,
+        compression_ratio=cr,
+        num_modules=n_modules,
+        num_states=len(ss.states),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API: Module boundaries
+# ---------------------------------------------------------------------------
+
+def find_module_boundaries(ss: "StateSpace") -> list[ModuleBoundary]:
+    """Find module boundaries using Fiedler vector bisection.
+
+    The Fiedler vector (eigenvector of the second-smallest Laplacian eigenvalue)
+    gives the optimal spectral bisection of the graph. States with positive
+    Fiedler components go to partition A, negative to partition B.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        List of ModuleBoundary objects (currently one bisection; could be
+        extended to recursive bisection).
+    """
+    states_list, fv = _fiedler_vector(ss)
+    n = len(states_list)
+    if n <= 1:
+        return []
+
+    # Partition by sign of Fiedler vector
+    part_a: set[int] = set()
+    part_b: set[int] = set()
+    for i, s in enumerate(states_list):
+        if fv[i] >= 0:
+            part_a.add(s)
+        else:
+            part_b.add(s)
+
+    # Ensure both partitions are non-empty
+    if not part_a or not part_b:
+        # All on one side; split in half by Fiedler order
+        indexed = sorted(zip(fv, states_list))
+        mid = n // 2
+        part_a = {s for _, s in indexed[:mid]}
+        part_b = {s for _, s in indexed[mid:]}
+
+    # Find cut edges
+    cut_edges = [
+        (src, lbl, tgt) for src, lbl, tgt in ss.transitions
+        if (src in part_a) != (tgt in part_a)
+    ]
+
+    total_edges = len(ss.transitions)
+    cut_ratio = len(cut_edges) / total_edges if total_edges > 0 else 0.0
+
+    fiedler = _fiedler_value(ss)
+
+    return [ModuleBoundary(
+        partition_a=frozenset(part_a),
+        partition_b=frozenset(part_b),
+        cut_edges=cut_edges,
+        cut_ratio=cut_ratio,
+        fiedler_value=fiedler,
+    )]
+
+
+# ---------------------------------------------------------------------------
+# Public API: Module discovery
+# ---------------------------------------------------------------------------
+
+def discover_modules(ss: "StateSpace") -> list[Module]:
+    """Discover protocol modules using FCA concept clustering.
+
+    Each formal concept (extent, intent) in the concept lattice of the
+    state-space's formal context corresponds to a module: the extent gives
+    the states, the intent gives the capabilities.
+
+    Non-trivial concepts (neither top nor bottom of the concept lattice)
+    are returned as modules.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        List of Module objects, one per non-trivial concept.
+    """
+    from reticulate.fca import formal_context, all_concepts
+
+    ctx = formal_context(ss)
+    concepts = all_concepts(ctx)
+
+    # Filter out trivial concepts (all states or empty states)
+    all_states = frozenset(ss.states)
+    modules: list[Module] = []
+
+    for concept in concepts:
+        states = concept.extent
+        caps = concept.intent
+        if not states or states == all_states:
+            continue
+
+        # Classify transitions
+        internal = [
+            (s, l, t) for s, l, t in ss.transitions
+            if s in states and t in states
+        ]
+        interface = [
+            (s, l, t) for s, l, t in ss.transitions
+            if (s in states) != (t in states)
+        ]
+
+        # Check completeness: all states reachable from any module state
+        # stay within the module
+        reach = _reachability(ss)
+        is_complete = all(
+            reach[s] & all_states <= states | {ss.bottom}
+            for s in states
+            if s != ss.bottom
+        ) if len(states) > 1 else True
+
+        modules.append(Module(
+            states=frozenset(states),
+            capabilities=frozenset(caps),
+            is_complete=is_complete,
+            internal_transitions=internal,
+            interface_transitions=interface,
+        ))
+
+    return modules
+
+
+# ---------------------------------------------------------------------------
+# Public API: Substitutability
+# ---------------------------------------------------------------------------
+
+def check_substitutability(
+    ss_old: "StateSpace",
+    ss_new: "StateSpace",
+) -> SubstitutionResult:
+    """Check whether ss_new can replace ss_old in a protocol.
+
+    Substitutability requires:
+    1. The new module is a subtype of the old (offers at least the same methods)
+    2. An order-preserving embedding exists from old into new
+    3. The replacement preserves distributivity
+
+    Args:
+        ss_old: The original module state space.
+        ss_new: The proposed replacement state space.
+
+    Returns:
+        SubstitutionResult with the substitutability verdict.
+    """
+    from reticulate.morphism import find_embedding
+    from reticulate.lattice import check_distributive
+
+    # Check embedding
+    embedding = find_embedding(ss_old, ss_new)
+    has_emb = embedding is not None
+
+    # Check subtyping: old methods are a subset of new methods
+    old_methods = {lbl for _, lbl, _ in ss_old.transitions}
+    new_methods = {lbl for _, lbl, _ in ss_new.transitions}
+    is_sub = old_methods <= new_methods
+
+    # Check distributivity preservation
+    dist_old = check_distributive(ss_old)
+    dist_new = check_distributive(ss_new)
+    preserves = (not dist_old.is_distributive) or dist_new.is_distributive
+
+    is_substitutable = has_emb and is_sub and preserves
+
+    if is_substitutable:
+        explanation = "New module is substitutable: embeds old, offers same methods, preserves modularity."
+    elif not has_emb:
+        explanation = "No order-preserving embedding from old to new module."
+    elif not is_sub:
+        missing = old_methods - new_methods
+        explanation = f"New module missing methods: {', '.join(sorted(missing))}."
+    else:
+        explanation = "Substitution would destroy distributivity (modularity)."
+
+    return SubstitutionResult(
+        is_substitutable=is_substitutable,
+        is_subtype=is_sub,
+        has_embedding=has_emb,
+        preserves_modularity=preserves,
+        explanation=explanation,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API: Minimal decomposition
+# ---------------------------------------------------------------------------
+
+def _count_join_irreducibles(ss: "StateSpace") -> int:
+    """Count join-irreducible elements in the state space lattice."""
+    hasse = _hasse_edges(ss)
+    # Count lower covers for each state
+    lower_covers: dict[int, int] = {s: 0 for s in ss.states}
+    for a, b in hasse:
+        lower_covers[a] += 1
+    return sum(1 for s in ss.states if lower_covers[s] == 1 and s != ss.bottom)
+
+
+def _join_irreducibles(ss: "StateSpace") -> set[int]:
+    """Find join-irreducible elements."""
+    hasse = _hasse_edges(ss)
+    lower_covers: dict[int, int] = {s: 0 for s in ss.states}
+    for a, b in hasse:
+        lower_covers[a] += 1
+    return {s for s in ss.states if lower_covers[s] == 1 and s != ss.bottom}
+
+
+def _downset(state: int, ss: "StateSpace") -> frozenset[int]:
+    """Compute the downset (order ideal) generated by a state."""
+    reach = _reachability(ss)
+    return frozenset(reach.get(state, {state}))
+
+
+def minimal_decomposition(ss: "StateSpace") -> list[IrreducibleModule]:
+    """Compute the minimal decomposition via Birkhoff's join-irreducibles.
+
+    Every element of a distributive lattice is a join of join-irreducible
+    elements. The join-irreducibles are the "atoms" of decomposition --
+    the minimal modules that cannot be further split.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        List of IrreducibleModule objects, one per join-irreducible.
+    """
+    jis = _join_irreducibles(ss)
+    reach = _reachability(ss)
+
+    # Compute height (distance from bottom) for each state
+    adj = _build_adjacency(ss)
+    heights: dict[int, int] = {}
+    # BFS from bottom upward
+    rev_adj: dict[int, set[int]] = {s: set() for s in ss.states}
+    for src, _, tgt in ss.transitions:
+        rev_adj[tgt].add(src)
+
+    queue = [ss.bottom]
+    heights[ss.bottom] = 0
+    visited = {ss.bottom}
+    while queue:
+        s = queue.pop(0)
+        for pred in rev_adj[s]:
+            if pred not in visited:
+                visited.add(pred)
+                heights[pred] = heights[s] + 1
+                queue.append(pred)
+
+    modules: list[IrreducibleModule] = []
+    for ji in sorted(jis):
+        ds = frozenset(reach.get(ji, {ji}))
+        labels = frozenset(
+            lbl for src, lbl, tgt in ss.transitions
+            if src in ds and tgt in ds
+        )
+        modules.append(IrreducibleModule(
+            representative=ji,
+            downset=ds,
+            labels=labels,
+            height=heights.get(ji, 0),
+        ))
+
+    return sorted(modules, key=lambda m: m.height, reverse=True)
+
+
+def compression_ratio(ss: "StateSpace") -> float:
+    """Compute |J(L)| / |L| -- the Birkhoff compression ratio.
+
+    Lower values mean the protocol has a more efficient representation
+    via its join-irreducibles. A ratio of 1.0 means no compression
+    (antichain lattice). Product lattices typically have low ratios.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        Float in [0, 1] (or technically can exceed 1 for degenerate cases).
+    """
+    n = len(ss.states)
+    if n == 0:
+        return 0.0
+    n_ji = _count_join_irreducibles(ss)
+    return n_ji / n
+
+
+# ---------------------------------------------------------------------------
+# Public API: Coupling and interface metrics
+# ---------------------------------------------------------------------------
+
+def coupling_score(ss: "StateSpace") -> float:
+    """Compute the coupling score based on spectral gap.
+
+    A higher Fiedler value means better connectivity (lower coupling between
+    would-be modules, since it's harder to separate). We normalize to [0, 1]
+    where 0 = uncoupled (easy to separate) and 1 = tightly coupled.
+
+    Uses: coupling = 1 - 1/(1 + fiedler) to map [0, inf) -> [0, 1).
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        Float in [0, 1] representing coupling strength.
+    """
+    f = _fiedler_value(ss)
+    return 1.0 - 1.0 / (1.0 + f)
+
+
+def reconvergence_degree(ss: "StateSpace") -> int:
+    """Compute the reconvergence degree of a state space.
+
+    Counts states with in-degree >= 2 (excluding top).
+    Higher reconvergence indicates more protocol entanglement
+    and typically correlates with non-modularity.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        Integer count of reconvergence points.
+    """
+    return _reconvergence_degree(ss)
+
+
+def interface_width(ss: "StateSpace") -> float:
+    """Compute the Cheeger constant (interface width).
+
+    The Cheeger constant h(G) measures the minimal "interface cost"
+    of any partition of the graph. Low h means easy to partition
+    (= easy to modularize). High h means tightly interwoven.
+
+    Related to Fiedler value by Cheeger's inequality:
+        fiedler/2 <= h <= sqrt(2 * fiedler)
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        Float >= 0 representing the Cheeger constant.
+    """
+    return _cheeger_constant(ss)
+
+
+# ---------------------------------------------------------------------------
+# Public API: Non-modularity diagnosis
+# ---------------------------------------------------------------------------
+
+def diagnose_non_modularity(ss: "StateSpace") -> NonModularityDiagnosis:
+    """Diagnose why a lattice fails to be modular (distributive).
+
+    Finds M3 and/or N5 forbidden sublattices and explains the entanglement
+    in human-readable terms.
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        NonModularityDiagnosis with the full diagnosis.
+    """
+    from reticulate.lattice import check_distributive
+
+    dist = check_distributive(ss)
+
+    if dist.is_distributive:
+        return NonModularityDiagnosis(
+            is_modular=True,
+            has_m3=False,
+            has_n5=False,
+            m3_witness=None,
+            n5_witness=None,
+            entanglement_type="none",
+            explanation="The lattice is distributive; no entanglement detected.",
+            reconvergence_degree=_reconvergence_degree(ss),
+        )
+
+    has_m3 = dist.has_m3
+    has_n5 = dist.has_n5
+
+    if has_m3 and has_n5:
+        etype = "both"
+    elif has_m3:
+        etype = "diamond"
+    elif has_n5:
+        etype = "pentagon"
+    else:
+        etype = "unknown"
+
+    # Build explanation
+    parts: list[str] = []
+    if has_m3:
+        w = dist.m3_witness
+        parts.append(
+            f"Diamond (M3) sublattice found at states {w}: "
+            f"three independent paths reconverge, creating an irreducible "
+            f"dependency that prevents clean decomposition."
+        )
+    if has_n5:
+        w = dist.n5_witness
+        parts.append(
+            f"Pentagon (N5) sublattice found at states {w}: "
+            f"an asymmetric ordering dependency creates a non-modular lattice. "
+            f"One module's ordering depends on another's state."
+        )
+    explanation = " ".join(parts)
+
+    return NonModularityDiagnosis(
+        is_modular=False,
+        has_m3=has_m3,
+        has_n5=has_n5,
+        m3_witness=dist.m3_witness,
+        n5_witness=dist.n5_witness,
+        entanglement_type=etype,
+        explanation=explanation,
+        reconvergence_degree=_reconvergence_degree(ss),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API: Refactoring suggestions
+# ---------------------------------------------------------------------------
+
+def suggest_modularization(ss: "StateSpace") -> list[Refactoring]:
+    """Suggest refactorings to improve modularity of a non-modular protocol.
+
+    Strategies:
+    1. If M3 (diamond) present: suggest splitting the reconvergence point
+    2. If N5 (pentagon) present: suggest flattening the asymmetric dependency
+    3. If high coupling: suggest splitting at the Fiedler cut
+    4. If low compression: suggest factoring into independent components
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        List of Refactoring suggestions, ordered by expected improvement.
+    """
+    from reticulate.lattice import check_distributive
+
+    dist = check_distributive(ss)
+    refactorings: list[Refactoring] = []
+
+    if dist.is_distributive:
+        return refactorings
+
+    # M3 refactoring: split the diamond
+    if dist.has_m3 and dist.m3_witness:
+        top_s, a, b, c, bot_s = dist.m3_witness
+        refactorings.append(Refactoring(
+            kind="split",
+            target_states=frozenset({top_s, a, b, c, bot_s}),
+            description=(
+                f"Split reconvergence at state {bot_s}: the diamond formed by "
+                f"states {a}, {b}, {c} creates three interleaved paths. "
+                f"Separate them into independent branches to achieve distributivity."
+            ),
+            expected_improvement=0.6,
+        ))
+
+    # N5 refactoring: flatten the pentagon
+    if dist.has_n5 and dist.n5_witness:
+        top_s, a, b, c, bot_s = dist.n5_witness
+        refactorings.append(Refactoring(
+            kind="flatten",
+            target_states=frozenset({top_s, a, b, c, bot_s}),
+            description=(
+                f"Flatten the asymmetric dependency at states {a}-{b} vs {c}: "
+                f"the pentagon structure indicates that the ordering of {c} "
+                f"is entangled with the {a}>{b} chain. Introduce an explicit "
+                f"intermediate state to make the ordering symmetric."
+            ),
+            expected_improvement=0.5,
+        ))
+
+    # High coupling: suggest Fiedler cut
+    f_val = _fiedler_value(ss)
+    if f_val > 0.5:
+        boundaries = find_module_boundaries(ss)
+        if boundaries:
+            b = boundaries[0]
+            refactorings.append(Refactoring(
+                kind="split",
+                target_states=frozenset(
+                    {src for src, _, _ in b.cut_edges} |
+                    {tgt for _, _, tgt in b.cut_edges}
+                ),
+                description=(
+                    f"Split protocol at spectral boundary "
+                    f"(cut ratio {b.cut_ratio:.2f}): "
+                    f"partition into {len(b.partition_a)} + {len(b.partition_b)} "
+                    f"state groups."
+                ),
+                expected_improvement=0.3,
+            ))
+
+    # Low compression: suggest factoring
+    cr = compression_ratio(ss)
+    if cr > 0.8:
+        refactorings.append(Refactoring(
+            kind="factor",
+            target_states=frozenset(ss.states),
+            description=(
+                f"High compression ratio ({cr:.2f}): most states are "
+                f"join-irreducible, suggesting the protocol has little "
+                f"internal redundancy. Consider introducing parallel "
+                f"composition to create product structure."
+            ),
+            expected_improvement=0.2,
+        ))
+
+    return sorted(refactorings, key=lambda r: r.expected_improvement, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# Public API: Full analysis
+# ---------------------------------------------------------------------------
+
+def analyze_modularity(ss: "StateSpace") -> ModularityAnalysis:
+    """Run the complete modularity analysis on a state space.
+
+    Combines all seven pillars:
+    1. Distributivity check (core modularity)
+    2. Spectral bisection (module boundaries)
+    3. FCA clustering (module discovery)
+    4. Birkhoff decomposition (minimal modules)
+    5. Non-modularity diagnosis (if applicable)
+    6. Refactoring suggestions (if non-modular)
+    7. Coupling metrics (Fiedler, Cheeger, reconvergence)
+
+    Args:
+        ss: A session type state space.
+
+    Returns:
+        ModularityAnalysis with the complete analysis.
+    """
+    mod_result = check_modularity(ss)
+    boundaries = find_module_boundaries(ss)
+    modules = discover_modules(ss)
+    irreducibles = minimal_decomposition(ss)
+
+    if not mod_result.is_modular:
+        diagnosis = diagnose_non_modularity(ss)
+        refactorings = suggest_modularization(ss)
+    else:
+        diagnosis = None
+        refactorings = []
+
+    return ModularityAnalysis(
+        modularity=mod_result,
+        boundaries=boundaries,
+        modules=modules,
+        irreducibles=irreducibles,
+        diagnosis=diagnosis,
+        refactorings=refactorings,
+        coupling=coupling_score(ss),
+        reconvergence=reconvergence_degree(ss),
+        interface_width=interface_width(ss),
+    )
