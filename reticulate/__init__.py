@@ -1069,6 +1069,30 @@ from reticulate.covert_channel import (
     detect_covert_channels,
     parallel_independence,
 )
+from reticulate.oo_principles import (
+    AbstractionResult,
+    DependencyInversionResult,
+    EncapsulationResult,
+    InheritanceResult,
+    Interface,
+    LiskovResult,
+    OOAnalysis,
+    OpenClosedResult,
+    PolymorphismResult,
+    SOLIDReport,
+    SRPResult,
+    abstract_protocol,
+    analyze_oo_principles,
+    check_dependency_inversion,
+    check_encapsulation,
+    check_inheritance,
+    check_liskov,
+    check_open_closed,
+    check_single_responsibility,
+    find_polymorphic_interface,
+    segregate_interfaces,
+    solid_check,
+)
 
 __all__ = [
     "__version__",
