@@ -669,11 +669,75 @@ def trace_validate(type_string: str, trace: str) -> str:
     return result
 
 
+@mcp.tool()
+def check_modularity(type_string: str) -> str:
+    """Check protocol modularity: distributivity, coupling, Birkhoff decomposition.
+
+    Returns a structured modularity certificate including:
+    - Verdict (MODULAR / WEAKLY_MODULAR / NOT_MODULAR / INVALID)
+    - Metrics (Fiedler value, Cheeger constant, coupling, compression ratio)
+    - Birkhoff decomposition (minimal modules)
+    - Diagnosis and refactoring suggestions (if non-modular)
+
+    Example: &{open: rec X . &{read: +{data: X, eof: &{close: end}}}}
+    """
+    t0 = _log_call("check_modularity", {"type_string": type_string})
+    try:
+        from reticulate.modular_report import generate_report
+        from reticulate.parser import parse, parse_program, pretty
+        from reticulate.resolve import resolve
+        from reticulate.statespace import build_statespace
+
+        program = parse_program(type_string)
+        ast = resolve(program)
+        ss = build_statespace(ast)
+        report = generate_report(type_string, ss, protocol_name="Protocol")
+
+        result = report.to_text()
+        _log_result("check_modularity", t0, result)
+        return result
+    except Exception as e:
+        error = f"Error: {e}"
+        _log_error("check_modularity", t0, error)
+        return error
+
+
+@mcp.tool()
+def import_protocol(spec_json: str, format: str = "openapi") -> str:
+    """Import an external API specification and convert to session types.
+
+    Supported formats: openapi, grpc, asyncapi.
+    The spec_json should be a JSON string of the specification dict.
+
+    Returns session types extracted from the specification.
+    """
+    t0 = _log_call("import_protocol", {"format": format})
+    try:
+        import json as _json
+        from reticulate.importers import from_spec
+
+        spec = _json.loads(spec_json)
+        result_dict = from_spec(spec, format)
+
+        lines = [f"Imported {len(result_dict)} session type(s) from {format}:", ""]
+        for name, type_str in result_dict.items():
+            lines.append(f"  {name}: {type_str}")
+
+        result = "\n".join(lines)
+        _log_result("import_protocol", t0, result)
+        return result
+    except Exception as e:
+        error = f"Error: {e}"
+        _log_error("import_protocol", t0, error)
+        return error
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 15 tools: analyze, test_gen, hasse, invariants, "
+        "Server ready — 17 tools: analyze, test_gen, hasse, invariants, "
         "conformance, petri_net, coverage, compress_type, analyze_global, "
-        "ci_check, supervise_programme, evaluate, subtype_check, dual, trace_validate"
+        "ci_check, supervise_programme, evaluate, subtype_check, dual, "
+        "trace_validate, check_modularity, import_protocol"
     )
     mcp.run()
     logger.info(

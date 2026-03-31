@@ -24,9 +24,22 @@ __version__ = "0.1.0"
 
 
 def main(argv: list[str] | None = None) -> None:
-    """CLI entry point."""
+    """CLI entry point.
+
+    Supports two modes:
+      - ``reticulate modular <type>``  — modularity analysis (P104)
+      - ``reticulate <type>``          — legacy lattice analysis
+    """
+    raw = argv if argv is not None else sys.argv[1:]
+
+    # Dispatch: if first positional is "modular", use the modular subcommand
+    if raw and raw[0] == "modular":
+        _main_modular(raw[1:])
+        return
+
+    # Legacy interface
     parser = argparse.ArgumentParser(
-        prog="session2lattice",
+        prog="reticulate",
         description="Session type analyzer \u2014 parse, build state space, check lattice properties.",
     )
     parser.add_argument(
@@ -155,7 +168,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Render factored side-by-side view of parallel factors (default: factored_output)",
     )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw)
 
     # Determine source string
     if args.file is not None:
@@ -345,6 +358,116 @@ def main(argv: list[str] | None = None) -> None:
 
     # Default: text summary
     _print_summary(args.type_string, ast, ss, result, distributive=args.distributive)
+
+
+def _main_modular(argv: list[str]) -> None:
+    """Execute the ``reticulate modular`` subcommand."""
+    from reticulate.modular_report import generate_report
+
+    parser = argparse.ArgumentParser(
+        prog="reticulate modular",
+        description="Analyze protocol modularity: distributivity, coupling, Birkhoff decomposition.",
+    )
+    parser.add_argument(
+        "type_string",
+        nargs="?",
+        default=None,
+        help='Session type string, e.g. "&{open: &{read: end, close: end}}"',
+    )
+    parser.add_argument(
+        "-f", "--file",
+        default=None,
+        metavar="FILE",
+        help="Read session type from FILE",
+    )
+    parser.add_argument(
+        "--name",
+        default="Protocol",
+        help="Protocol name for the report (default: Protocol)",
+    )
+    parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json", "dot"],
+        dest="report_format",
+        help="Output format (default: text)",
+    )
+    parser.add_argument(
+        "--hasse",
+        nargs="?",
+        const="modular_hasse",
+        default=None,
+        metavar="PATH",
+        help="Also render Hasse diagram to PATH",
+    )
+    parser.add_argument(
+        "--fmt",
+        default="png",
+        choices=["png", "svg", "pdf"],
+        help="Hasse diagram format (default: png)",
+    )
+
+    args = parser.parse_args(argv)
+
+    # Determine source
+    if args.file is not None:
+        try:
+            source = Path(args.file).read_text()
+        except (OSError, IOError) as e:
+            print(f"Error reading file: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.type_string is not None:
+        source = args.type_string
+    else:
+        print("Error: either type_string or --file is required", file=sys.stderr)
+        sys.exit(1)
+
+    # Parse
+    try:
+        program = parse_program(source)
+        ast = resolve(program)
+    except ParseError as e:
+        print(f"Parse error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ResolveError as e:
+        print(f"Resolve error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Build state space
+    try:
+        ss = build_statespace(ast)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Generate report
+    report = generate_report(source, ss, protocol_name=args.name)
+
+    # Output
+    if args.report_format == "json":
+        print(report.to_json())
+    elif args.report_format == "dot":
+        print(report.to_dot())
+    else:
+        print(report.to_text())
+
+    # Optional Hasse diagram
+    if args.hasse is not None:
+        try:
+            out = render_hasse(
+                ss,
+                args.hasse,
+                fmt=args.fmt,
+                result=report.lattice_result,
+                title=f"Modularity: {args.name}",
+            )
+        except ImportError:
+            print(
+                "Error: The 'graphviz' Python package is required for --hasse.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"Hasse diagram: {out}", file=sys.stderr)
 
 
 def _print_summary(
