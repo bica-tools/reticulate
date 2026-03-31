@@ -472,9 +472,17 @@ def _find_n5(q: _QuotientPoset) -> tuple[int, ...] | None:
                 bot = _meet_on_quotient(q, b, c)
                 if top is not None and bot is not None:
                     # Verify this is actually N₅: top > a > b > bot, top > c > bot
+                    # Additional check: the 5 elements must form a sublattice
+                    # isomorphic to N₅. In N₅, meet(a,c) = bot (not some
+                    # intermediate element).
                     if (le(top, a) and le(a, b) and le(b, bot)
                             and le(top, c) and le(c, bot)):
-                        return (top, a, b, c, bot)
+                        # Verify sublattice: in N₅, meet(a,c)=bot
+                    # and join(b,c)=top (not some intermediate element)
+                        mac = _meet_on_quotient(q, a, c)
+                        jbc = _join_on_quotient(q, b, c)
+                        if mac == bot and jbc == top:
+                            return (top, a, b, c, bot)
     return None
 
 
