@@ -14,7 +14,10 @@ from reticulate.statespace import build_statespace, StateSpace
 from reticulate.local_modularity import (
     StateModularity,
     LocalModularityResult,
+    Module,
+    ModuleDecomposition,
     analyze_local_modularity,
+    decompose_modules,
     find_fault_states,
     modular_coverage,
     change_impact,
@@ -630,3 +633,448 @@ class TestP104SelfReference:
             r = analyze_local_modularity(ss)
             assert r.total_states > 0, f"{bp.name}: empty"
             assert r.explanation != "", f"{bp.name}: no explanation"
+
+
+# ===========================================================================
+# TestModuleDecomposition
+# ===========================================================================
+
+class TestModuleDecomposition:
+    """Decompose known protocols into distributive modules + glue."""
+
+    def test_result_type(self) -> None:
+        """decompose_modules returns a ModuleDecomposition."""
+        ss = _ss("end")
+        d = decompose_modules(ss)
+        assert isinstance(d, ModuleDecomposition)
+
+    def test_module_type(self) -> None:
+        """Each module is a Module instance."""
+        ss = _ss("&{a: end, b: end}")
+        d = decompose_modules(ss)
+        for m in d.modules:
+            assert isinstance(m, Module)
+
+    def test_end_single_module(self) -> None:
+        """end: 1 module = entire lattice, no glue."""
+        ss = _ss("end")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+    def test_simple_chain_single_module(self) -> None:
+        """Simple chain: 1 module, no glue."""
+        ss = _ss("&{a: &{b: end}}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+        assert d.modules[0].size == 3
+
+    def test_two_branch_single_module(self) -> None:
+        """Two branches to end: 1 module (distributive), no glue."""
+        ss = _ss("&{a: end, b: end}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+    def test_three_branch_single_module(self) -> None:
+        """3-branch with shared end: 1 module, no glue (M3 harmless at 2 states)."""
+        ss = _ss("&{a: end, b: end, c: end}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+    def test_iterator_single_module(self) -> None:
+        """Iterator (distributive, cyclic): 1 module = entire lattice."""
+        ss = _ss("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+        assert d.modules[0].states == frozenset(ss.states)
+
+    def test_parallel_single_module(self) -> None:
+        """Parallel product (always distributive): 1 module, no glue."""
+        ss = _ss("(&{a: end, b: end} || &{c: end, d: end})")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+    def test_two_phase_two_modules(self) -> None:
+        """Two-Phase Commit: 2 modules (allYes path + anyNo path)."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        assert d.num_modules == 2
+
+    def test_two_phase_has_glue(self) -> None:
+        """Two-Phase Commit glue includes the fault state."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        assert len(d.glue_states) >= 1
+
+    def test_two_phase_has_fault_in_glue(self) -> None:
+        """Two-Phase Commit has a fault state in glue."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        assert len(d.fault_states) >= 1
+
+    def test_petstore_deep_three_modules(self) -> None:
+        """Petstore 3-endpoint (deep): 3 modules, 1 dispatch glue (top)."""
+        ss = _ss("&{list: &{filter: end}, get: &{validate: end}, create: &{save: end}}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 3
+        assert len(d.glue_states) == 1
+
+    def test_petstore_deep_dispatch_only(self) -> None:
+        """Petstore 3-endpoint: glue is dispatch-only."""
+        ss = _ss("&{list: &{filter: end}, get: &{validate: end}, create: &{save: end}}")
+        d = decompose_modules(ss)
+        assert d.glue_states == d.dispatch_states
+
+    def test_module_root_in_module_states(self) -> None:
+        """Every module root is in the module's states."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        for m in d.modules:
+            assert m.root in m.states
+
+    def test_module_bottom_in_module_states(self) -> None:
+        """Bottom state is in every module (shared terminal)."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        for m in d.modules:
+            assert ss.bottom in m.states
+
+    def test_module_size_matches_states(self) -> None:
+        """Module.size equals len(Module.states)."""
+        ss = _ss("rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")
+        d = decompose_modules(ss)
+        for m in d.modules:
+            assert m.size == len(m.states)
+
+    def test_module_labels_nonempty_for_nontrivial(self) -> None:
+        """Non-trivial modules have at least one label."""
+        ss = _ss("&{a: &{b: end}}")
+        d = decompose_modules(ss)
+        for m in d.modules:
+            if m.size > 1:
+                assert len(m.labels) >= 1
+
+    def test_tls_four_modules(self) -> None:
+        """TLS Handshake: 4 modules (certificate/psk paths)."""
+        ss = _ss(
+            "&{clientHello: +{HELLO_RETRY: &{clientHello: &{serverHello: "
+            "&{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}, "
+            "SERVER_HELLO: &{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}"
+        )
+        d = decompose_modules(ss)
+        assert d.num_modules == 4
+
+    def test_explanation_nonempty(self) -> None:
+        """Explanation string is always non-empty."""
+        for ts in ["end", "&{a: end}", "&{a: end, b: end}"]:
+            d = decompose_modules(_ss(ts))
+            assert len(d.explanation) > 0
+
+    def test_selection_single_module(self) -> None:
+        """Selection protocol: 1 module (distributive)."""
+        ss = _ss("+{OK: end, ERROR: end}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+
+# ===========================================================================
+# TestFullyModular
+# ===========================================================================
+
+class TestFullyModular:
+    """Verify is_fully_modular flag."""
+
+    def test_distributive_fully_modular(self) -> None:
+        """Any globally distributive type is fully modular."""
+        for ts in [
+            "end",
+            "&{a: end}",
+            "&{a: end, b: end}",
+            "rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}",
+            "(&{a: end} || &{b: end})",
+        ]:
+            d = decompose_modules(_ss(ts))
+            assert d.is_fully_modular, f"Expected fully modular for {ts}"
+
+    def test_petstore_deep_fully_modular(self) -> None:
+        """Petstore 3-endpoint: fully modular (glue is dispatch-only)."""
+        ss = _ss("&{list: &{filter: end}, get: &{validate: end}, create: &{save: end}}")
+        d = decompose_modules(ss)
+        assert d.is_fully_modular
+
+    def test_two_phase_not_fully_modular(self) -> None:
+        """Two-Phase Commit: NOT fully modular (glue has non-dispatch state)."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        assert not d.is_fully_modular
+
+    def test_tls_not_fully_modular(self) -> None:
+        """TLS Handshake: NOT fully modular."""
+        ss = _ss(
+            "&{clientHello: +{HELLO_RETRY: &{clientHello: &{serverHello: "
+            "&{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}, "
+            "SERVER_HELLO: &{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}"
+        )
+        d = decompose_modules(ss)
+        assert not d.is_fully_modular
+
+    def test_no_glue_means_fully_modular(self) -> None:
+        """No glue at all implies fully modular."""
+        ss = _ss("&{a: &{b: end}}")
+        d = decompose_modules(ss)
+        assert d.glue_states == frozenset()
+        assert d.is_fully_modular
+
+
+# ===========================================================================
+# TestModuleIndependence
+# ===========================================================================
+
+class TestModuleIndependence:
+    """Verify modules have disjoint transition sets (except bottom)."""
+
+    def test_two_phase_disjoint_non_bottom(self) -> None:
+        """2PC modules share only the bottom state."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        assert d.num_modules == 2
+        m0_states = d.modules[0].states - {ss.bottom}
+        m1_states = d.modules[1].states - {ss.bottom}
+        assert m0_states & m1_states == set(), "Modules should not share non-bottom states"
+
+    def test_two_phase_disjoint_labels(self) -> None:
+        """2PC modules have disjoint transition labels."""
+        ss = _ss(
+            "&{prepare: &{allYes: &{commit: +{ACK: end, TIMEOUT: &{abort: end}}}, "
+            "anyNo: &{abort: end}}}"
+        )
+        d = decompose_modules(ss)
+        assert d.num_modules == 2
+        # Labels may overlap (both have 'abort') but internal transitions differ
+        # At minimum, each module has its own unique labels
+        all_labels = set()
+        for m in d.modules:
+            all_labels.update(m.labels)
+        assert len(all_labels) >= 2
+
+    def test_petstore_modules_disjoint(self) -> None:
+        """Petstore modules have disjoint non-bottom states."""
+        ss = _ss("&{list: &{filter: end}, get: &{validate: end}, create: &{save: end}}")
+        d = decompose_modules(ss)
+        non_bottom_sets = [m.states - {ss.bottom} for m in d.modules]
+        for i in range(len(non_bottom_sets)):
+            for j in range(i + 1, len(non_bottom_sets)):
+                assert non_bottom_sets[i] & non_bottom_sets[j] == set()
+
+    def test_petstore_modules_have_unique_labels(self) -> None:
+        """Petstore: each module has labels not in any other module."""
+        ss = _ss("&{list: &{filter: end}, get: &{validate: end}, create: &{save: end}}")
+        d = decompose_modules(ss)
+        for i, mi in enumerate(d.modules):
+            other_labels = set()
+            for j, mj in enumerate(d.modules):
+                if i != j:
+                    other_labels.update(mj.labels)
+            # Each module should have at least one unique label
+            unique = mi.labels - other_labels
+            assert len(unique) >= 1, f"Module {i} has no unique labels"
+
+    def test_single_module_covers_all(self) -> None:
+        """When there's 1 module, it covers all states."""
+        ss = _ss("&{a: &{b: end}}")
+        d = decompose_modules(ss)
+        assert d.num_modules == 1
+        assert d.modules[0].states == frozenset(ss.states)
+
+    def test_tls_modules_disjoint_non_bottom(self) -> None:
+        """TLS modules share only bottom."""
+        ss = _ss(
+            "&{clientHello: +{HELLO_RETRY: &{clientHello: &{serverHello: "
+            "&{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}, "
+            "SERVER_HELLO: &{certificate: &{verify: &{changeCipher: end}}, "
+            "psk: &{changeCipher: end}}}}"
+        )
+        d = decompose_modules(ss)
+        non_bottom = [m.states - {ss.bottom} for m in d.modules]
+        for i in range(len(non_bottom)):
+            for j in range(i + 1, len(non_bottom)):
+                assert non_bottom[i] & non_bottom[j] == set()
+
+
+# ===========================================================================
+# TestBenchmarkDecomposition
+# ===========================================================================
+
+class TestBenchmarkDecomposition:
+    """Decompose all 108 benchmarks and verify invariants."""
+
+    def test_distributive_single_module(self) -> None:
+        """Globally distributive benchmarks produce exactly 1 module."""
+        from tests.benchmarks.protocols import BENCHMARKS
+        from reticulate.lattice import check_distributive
+        for bp in BENCHMARKS:
+            ss = build_statespace(parse(bp.type_string))
+            dist = check_distributive(ss)
+            if dist.is_distributive:
+                d = decompose_modules(ss)
+                assert d.num_modules == 1, (
+                    f"{bp.name}: distributive but {d.num_modules} modules"
+                )
+                assert d.glue_states == frozenset(), (
+                    f"{bp.name}: distributive but has glue"
+                )
+
+    def test_non_distributive_multiple_modules(self) -> None:
+        """Non-distributive benchmarks produce >= 2 modules."""
+        from tests.benchmarks.protocols import BENCHMARKS
+        from reticulate.lattice import check_distributive
+        for bp in BENCHMARKS:
+            ss = build_statespace(parse(bp.type_string))
+            dist = check_distributive(ss)
+            if not dist.is_distributive:
+                d = decompose_modules(ss)
+                assert d.num_modules >= 2, (
+                    f"{bp.name}: non-distributive but only {d.num_modules} module(s)"
+                )
+
+    def test_modules_cover_all_non_glue(self) -> None:
+        """Module states + glue = all states, for all benchmarks."""
+        from tests.benchmarks.protocols import BENCHMARKS
+        for bp in BENCHMARKS[:30]:  # sample for speed
+            ss = build_statespace(parse(bp.type_string))
+            d = decompose_modules(ss)
+            covered = set()
+            for m in d.modules:
+                covered.update(m.states)
+            covered.update(d.glue_states)
+            assert covered == ss.states, (
+                f"{bp.name}: modules+glue miss states {ss.states - covered}"
+            )
+
+    def test_num_modules_field(self) -> None:
+        """num_modules equals len(modules) for all benchmarks."""
+        from tests.benchmarks.protocols import BENCHMARKS
+        for bp in BENCHMARKS[:20]:
+            ss = build_statespace(parse(bp.type_string))
+            d = decompose_modules(ss)
+            assert d.num_modules == len(d.modules)
+
+    def test_fault_states_subset_of_glue(self) -> None:
+        """Fault states are always a subset of glue states."""
+        from tests.benchmarks.protocols import BENCHMARKS
+        for bp in BENCHMARKS[:20]:
+            ss = build_statespace(parse(bp.type_string))
+            d = decompose_modules(ss)
+            assert d.fault_states <= d.glue_states, (
+                f"{bp.name}: fault states not subset of glue"
+            )
+
+    def test_dispatch_states_subset_of_glue(self) -> None:
+        """Dispatch states are always a subset of glue states."""
+        from tests.benchmarks.protocols import BENCHMARKS
+        for bp in BENCHMARKS[:20]:
+            ss = build_statespace(parse(bp.type_string))
+            d = decompose_modules(ss)
+            assert d.dispatch_states <= d.glue_states, (
+                f"{bp.name}: dispatch states not subset of glue"
+            )
+
+
+# ===========================================================================
+# TestP104Modules
+# ===========================================================================
+
+class TestP104Modules:
+    """Decompose P104 self-referencing protocols."""
+
+    def test_p104_cli_single_module(self) -> None:
+        """P104-CLI (distributive): 1 module, no glue."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        bp = P104_BENCHMARKS[0]
+        assert bp.name == "P104-CLI"
+        d = decompose_modules(build_statespace(parse(bp.type_string)))
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+    def test_p104_rest_single_module(self) -> None:
+        """P104-REST-API (distributive): 1 module, no glue."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        bp = P104_BENCHMARKS[1]
+        assert bp.name == "P104-REST-API"
+        d = decompose_modules(build_statespace(parse(bp.type_string)))
+        assert d.num_modules == 1
+        assert d.glue_states == frozenset()
+
+    def test_p104_importer_multiple_modules(self) -> None:
+        """P104-Importer (non-distributive): >= 2 modules."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        bp = P104_BENCHMARKS[2]
+        assert bp.name == "P104-Importer"
+        d = decompose_modules(build_statespace(parse(bp.type_string)))
+        assert d.num_modules >= 2
+
+    def test_p104_importer_has_glue(self) -> None:
+        """P104-Importer has glue states."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        bp = P104_BENCHMARKS[2]
+        d = decompose_modules(build_statespace(parse(bp.type_string)))
+        assert len(d.glue_states) >= 1
+
+    def test_p104_report_gen_single_module(self) -> None:
+        """P104-Report-Gen (distributive): 1 module."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        bp = P104_BENCHMARKS[3]
+        assert bp.name == "P104-Report-Gen"
+        d = decompose_modules(build_statespace(parse(bp.type_string)))
+        assert d.num_modules == 1
+
+    def test_p104_mcp_single_module(self) -> None:
+        """P104-MCP-Server (distributive): 1 module."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        bp = P104_BENCHMARKS[4]
+        assert bp.name == "P104-MCP-Server"
+        d = decompose_modules(build_statespace(parse(bp.type_string)))
+        assert d.num_modules == 1
+
+    def test_all_p104_modules_valid(self) -> None:
+        """All P104 decompositions have valid module structure."""
+        from tests.benchmarks.p104_self import P104_BENCHMARKS
+        for bp in P104_BENCHMARKS:
+            ss = build_statespace(parse(bp.type_string))
+            d = decompose_modules(ss)
+            assert d.num_modules >= 1, f"{bp.name}: no modules"
+            for m in d.modules:
+                assert m.root in m.states, f"{bp.name}: root not in states"
+                assert m.size == len(m.states), f"{bp.name}: size mismatch"

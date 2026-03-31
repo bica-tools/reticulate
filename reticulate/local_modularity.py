@@ -41,6 +41,29 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
+class Module:
+    """A maximal distributive interval -- an independently modifiable part."""
+
+    root: int                    # top state of the module
+    states: frozenset[int]       # all states in the module
+    labels: frozenset[str]       # transition labels within the module
+    size: int
+
+
+@dataclass(frozen=True)
+class ModuleDecomposition:
+    """Decomposition of a lattice into distributive modules + glue."""
+
+    modules: list[Module]
+    glue_states: frozenset[int]       # states not in any module
+    fault_states: frozenset[int]      # glue states that are fault states
+    dispatch_states: frozenset[int]   # glue states that are just choice points (harmless)
+    num_modules: int
+    is_fully_modular: bool            # glue has only dispatch states, no faults
+    explanation: str
+
+
+@dataclass(frozen=True)
 class StateModularity:
     """Modularity analysis for a single state."""
 
@@ -323,6 +346,169 @@ def change_impact(ss: StateSpace, state: int) -> dict:
         "upstream_states": sorted(upstream),
         "propagation_risk": risk,
     }
+
+
+def decompose_modules(ss: StateSpace) -> ModuleDecomposition:
+    """Decompose lattice into maximal distributive intervals (modules) + glue.
+
+    Algorithm:
+    1. For each state s (bottom-up by interval size), check if [s, bottom] is distributive.
+    2. A module root is a state where [s, bottom] is distributive but no parent's
+       interval is distributive (maximal distributive interval boundary).
+    3. Glue = states not in any module.
+    4. Fault states = glue states whose interval is non-distributive but all
+       successor intervals are distributive.
+    5. Dispatch states = glue states where all successors are module roots or
+       in some module (harmless routing states).
+    """
+    lr = check_lattice(ss)
+    if not lr.is_lattice:
+        return ModuleDecomposition(
+            modules=[],
+            glue_states=frozenset(ss.states),
+            fault_states=frozenset(),
+            dispatch_states=frozenset(),
+            num_modules=0,
+            is_fully_modular=False,
+            explanation="State space is not a lattice; decomposition not applicable.",
+        )
+
+    # Step 1: compute distributivity of every interval [s, bottom]
+    modular_cache: dict[int, bool] = {}
+    interval_cache: dict[int, set[int]] = {}
+    for state in ss.states:
+        interval_cache[state] = _interval_states(ss, state)
+        modular_cache[state] = _check_interval_distributive(ss, state)
+
+    # Step 2: find module roots — maximal distributive intervals.
+    # A state s is a module root if:
+    #   (a) [s, bottom] is distributive, AND
+    #   (b) for every parent p of s, [p, bottom] is NOT distributive
+    #       (or s is the top and [top, bottom] is distributive)
+    # Parents = states with a direct transition into s.
+    parents_of: dict[int, set[int]] = {s: set() for s in ss.states}
+    for src, _, tgt in ss.transitions:
+        parents_of[tgt].add(src)
+
+    # Detect states reachable from top (to handle cycles properly)
+    reachable_from_top = _reachable_set(ss, ss.top)
+
+    module_roots: list[int] = []
+    for state in sorted(ss.states, key=lambda s: len(interval_cache[s])):
+        if not modular_cache[state]:
+            continue
+        # The top state is always a module root if distributive
+        if state == ss.top:
+            module_roots.append(state)
+            continue
+        # Check if any parent also has a distributive interval,
+        # excluding parents that are in the same SCC (cycle)
+        # A parent in the same SCC means it's reachable from state too
+        state_reach = _reachable_set(ss, state)
+        has_dist_parent = False
+        for p in parents_of[state]:
+            if p == state:
+                continue
+            # If p is reachable from state, they're in a cycle -- skip
+            if p in state_reach:
+                continue
+            if modular_cache.get(p, False):
+                has_dist_parent = True
+                break
+        if not has_dist_parent:
+            module_roots.append(state)
+
+    # Step 3: build modules. Each module root claims its interval.
+    # If intervals overlap, higher (larger interval) module wins.
+    # Sort roots by interval size descending so larger modules are built first.
+    module_roots.sort(key=lambda s: len(interval_cache[s]), reverse=True)
+
+    claimed: set[int] = set()
+    modules: list[Module] = []
+    for root in module_roots:
+        interval = interval_cache[root]
+        # Module states = interval minus states already claimed by a larger module,
+        # BUT we always include bottom (shared).
+        module_states = frozenset(
+            s for s in interval if s not in claimed or s == ss.bottom
+        )
+        if len(module_states) <= 1 and module_states == {ss.bottom}:
+            # Degenerate: only bottom. Skip unless root IS bottom.
+            if root != ss.bottom:
+                continue
+        # Compute labels within module
+        module_labels = frozenset(
+            lbl for src, lbl, tgt in ss.transitions
+            if src in module_states and tgt in module_states
+        )
+        modules.append(Module(
+            root=root,
+            states=module_states,
+            labels=module_labels,
+            size=len(module_states),
+        ))
+        claimed.update(module_states)
+
+    # Step 4: glue = states not in any module
+    all_module_states = set()
+    for m in modules:
+        all_module_states.update(m.states)
+    glue = frozenset(ss.states - all_module_states)
+
+    # Step 5: classify glue states
+    module_root_set = {m.root for m in modules}
+    fault_set: set[int] = set()
+    dispatch_set: set[int] = set()
+
+    for g in glue:
+        succs = _outgoing(ss, g)
+        if not succs:
+            # Isolated glue state (shouldn't normally happen)
+            continue
+        # Is it a fault state? Non-distributive but all successors distributive
+        all_succ_dist = all(modular_cache.get(tgt, True) for _, tgt in succs)
+        if all_succ_dist:
+            fault_set.add(g)
+        # Is it a dispatch state? All successors lead into modules
+        all_succ_in_modules = all(
+            tgt in all_module_states or tgt in module_root_set
+            for _, tgt in succs
+        )
+        if all_succ_in_modules:
+            dispatch_set.add(g)
+
+    fault_states = frozenset(fault_set)
+    dispatch_states = frozenset(dispatch_set)
+    # Fully modular if no glue, or all glue states are dispatch (harmless routing)
+    is_fully_modular = len(glue) == 0 or glue == dispatch_states
+
+    # Explanation
+    if len(glue) == 0:
+        explanation = (
+            f"Fully modular: {len(modules)} module(s) cover all "
+            f"{len(ss.states)} states."
+        )
+    elif is_fully_modular:
+        explanation = (
+            f"{len(modules)} module(s) with {len(glue)} dispatch-only glue "
+            f"state(s). Fully modular (no fault states in glue)."
+        )
+    else:
+        explanation = (
+            f"{len(modules)} module(s) with {len(glue)} glue state(s) "
+            f"({len(fault_set)} fault, {len(dispatch_set)} dispatch). "
+            f"Not fully modular."
+        )
+
+    return ModuleDecomposition(
+        modules=modules,
+        glue_states=glue,
+        fault_states=fault_states,
+        dispatch_states=dispatch_states,
+        num_modules=len(modules),
+        is_fully_modular=is_fully_modular,
+        explanation=explanation,
+    )
 
 
 def analyze_local_modularity(ss: StateSpace) -> LocalModularityResult:
