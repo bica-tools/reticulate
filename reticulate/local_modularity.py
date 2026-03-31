@@ -268,8 +268,10 @@ def find_fault_states(ss: StateSpace) -> list[int]:
     """Find states where changes propagate upward.
 
     A fault state is one whose interval [s, bottom] is NOT distributive,
-    but ALL successor intervals [succ, bottom] ARE distributive.
-    This is the boundary where non-distributivity first appears.
+    but ALL successor intervals [succ, bottom] ARE distributive,
+    AND the state is not the top (nothing above top for changes to reach).
+    This is the boundary where non-distributivity first appears and
+    changes propagate upward.
     """
     faults: list[int] = []
     modular_cache: dict[int, bool] = {}
@@ -280,7 +282,7 @@ def find_fault_states(ss: StateSpace) -> list[int]:
         return modular_cache[s]
 
     for state in sorted(ss.states):
-        if state == ss.bottom:
+        if state == ss.bottom or state == ss.top:
             continue
         if _is_modular(state):
             continue
