@@ -160,6 +160,119 @@ PYTHON_PROTOCOLS: dict[str, dict[str, Any]] = {
 
 
 # ---------------------------------------------------------------------------
+# Java protocol specifications (Step 97c)
+# ---------------------------------------------------------------------------
+
+JAVA_PROTOCOLS: dict[str, dict[str, Any]] = {
+    "java_iterator": {
+        "description": "java.util.Iterator<E> protocol",
+        "traces": [
+            ["hasNext", "next", "hasNext", "next", "hasNext"],
+            ["hasNext", "next", "hasNext"],
+            ["hasNext"],
+            ["hasNext", "next", "remove", "hasNext", "next", "hasNext"],
+            ["hasNext", "next", "hasNext", "next", "remove", "hasNext"],
+        ],
+    },
+    "jdbc_connection": {
+        "description": "java.sql.Connection lifecycle",
+        "traces": [
+            ["createStatement", "executeQuery", "next", "getString", "close", "close"],
+            ["createStatement", "executeUpdate", "close", "commit", "close"],
+            ["createStatement", "executeQuery", "next", "close", "close"],
+            ["prepareStatement", "setString", "executeQuery", "next", "close", "close"],
+            ["createStatement", "executeUpdate", "close", "rollback", "close"],
+            ["setAutoCommit", "createStatement", "executeUpdate", "close", "commit", "close"],
+            ["close"],
+        ],
+    },
+    "java_inputstream": {
+        "description": "java.io.InputStream lifecycle",
+        "traces": [
+            ["read", "read", "read", "close"],
+            ["read", "close"],
+            ["available", "read", "close"],
+            ["skip", "read", "close"],
+            ["mark", "read", "read", "reset", "read", "close"],
+            ["close"],
+        ],
+    },
+    "java_socket": {
+        "description": "java.net.Socket lifecycle",
+        "traces": [
+            ["connect", "getInputStream", "getOutputStream", "close"],
+            ["connect", "getOutputStream", "close"],
+            ["connect", "getInputStream", "close"],
+            ["connect", "setSoTimeout", "getInputStream", "close"],
+            ["close"],
+        ],
+    },
+    "java_httpurlconnection": {
+        "description": "java.net.HttpURLConnection lifecycle",
+        "traces": [
+            ["setRequestMethod", "connect", "getResponseCode", "getInputStream", "disconnect"],
+            ["setRequestMethod", "setDoOutput", "connect", "getOutputStream", "getResponseCode", "disconnect"],
+            ["setRequestMethod", "connect", "getResponseCode", "disconnect"],
+            ["setRequestMethod", "addRequestProperty", "connect", "getResponseCode", "getInputStream", "disconnect"],
+            ["connect", "getResponseCode", "disconnect"],
+        ],
+    },
+    "java_servlet": {
+        "description": "javax.servlet.http.HttpServlet lifecycle",
+        "traces": [
+            ["init", "service", "doGet", "destroy"],
+            ["init", "service", "doPost", "destroy"],
+            ["init", "service", "doPut", "destroy"],
+            ["init", "service", "doDelete", "destroy"],
+            ["init", "service", "doGet", "service", "doPost", "destroy"],
+            ["init", "destroy"],
+        ],
+    },
+    "java_outputstream": {
+        "description": "java.io.OutputStream lifecycle",
+        "traces": [
+            ["write", "write", "flush", "close"],
+            ["write", "close"],
+            ["write", "write", "write", "flush", "close"],
+            ["flush", "close"],
+            ["close"],
+        ],
+    },
+    "java_lock": {
+        "description": "java.util.concurrent.locks.Lock protocol",
+        "traces": [
+            ["lock", "unlock"],
+            ["lock", "unlock", "lock", "unlock"],
+            ["tryLock", "unlock"],
+            ["lockInterruptibly", "unlock"],
+            ["lock", "unlock", "lock", "unlock", "lock", "unlock"],
+        ],
+    },
+    "java_executorservice": {
+        "description": "java.util.concurrent.ExecutorService lifecycle",
+        "traces": [
+            ["submit", "submit", "shutdown", "awaitTermination"],
+            ["submit", "shutdown", "awaitTermination"],
+            ["execute", "execute", "shutdown", "awaitTermination"],
+            ["submit", "invokeAll", "shutdown", "awaitTermination"],
+            ["shutdown", "awaitTermination"],
+            ["shutdownNow"],
+        ],
+    },
+    "java_bufferedreader": {
+        "description": "java.io.BufferedReader lifecycle",
+        "traces": [
+            ["readLine", "readLine", "readLine", "close"],
+            ["readLine", "close"],
+            ["read", "read", "close"],
+            ["ready", "readLine", "close"],
+            ["close"],
+        ],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # AST-based extraction from Python source
 # ---------------------------------------------------------------------------
 
@@ -275,9 +388,21 @@ def analyze_protocol(name: str, raw_traces: list[list[str]]) -> SourceExtraction
 
 
 def analyze_all_protocols() -> list[SourceExtractionResult]:
-    """Analyze all known Python protocol specifications."""
+    """Analyze all known protocol specifications (Python + Java)."""
     results: list[SourceExtractionResult] = []
     for name, spec in PYTHON_PROTOCOLS.items():
+        result = analyze_protocol(name, spec["traces"])
+        results.append(result)
+    for name, spec in JAVA_PROTOCOLS.items():
+        result = analyze_protocol(name, spec["traces"])
+        results.append(result)
+    return results
+
+
+def analyze_java_protocols() -> list[SourceExtractionResult]:
+    """Analyze all known Java protocol specifications."""
+    results: list[SourceExtractionResult] = []
+    for name, spec in JAVA_PROTOCOLS.items():
         result = analyze_protocol(name, spec["traces"])
         results.append(result)
     return results
