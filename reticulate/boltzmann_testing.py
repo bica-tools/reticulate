@@ -382,6 +382,10 @@ def run_trial(
         selected = select_boltzmann_length(paths, budget, beta or 1.0, rng)
     elif strategy == "entropy":
         selected = select_entropy_weighted(ss, paths, budget, beta or 1.0, rng)
+    elif strategy == "adaptive":
+        selected = select_adaptive(ss, paths, budget, 0.1, beta or 3.0, rng)
+    elif strategy == "greedy":
+        selected = select_coverage_greedy(ss, paths, budget, rng)
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -452,9 +456,15 @@ def run_experiment(
                          random.Random(rng.randint(0, 10**9)))
             trials.append(t)
 
+        # Greedy baseline (optimal coverage)
+        for trial in range(n_trials):
+            t = run_trial(ss, paths, mutants, "greedy", None, budget,
+                         random.Random(rng.randint(0, 10**9)))
+            trials.append(t)
+
         # Boltzmann strategies at each β
         for beta in betas:
-            for strategy in ["energy", "length", "entropy"]:
+            for strategy in ["energy", "length", "entropy", "adaptive"]:
                 for trial in range(n_trials):
                     t = run_trial(ss, paths, mutants, strategy, beta, budget,
                                  random.Random(rng.randint(0, 10**9)))
@@ -504,6 +514,73 @@ def summarize_experiment(result: ExperimentResult) -> list[StrategyComparison]:
         ))
 
     return summaries
+
+
+def select_adaptive(
+    ss: StateSpace,
+    paths: list[ValidPath],
+    n: int,
+    beta_start: float,
+    beta_end: float,
+    rng: random.Random,
+) -> list[ValidPath]:
+    """Strategy D: Adaptive temperature — start hot, cool down.
+
+    First half of budget at beta_start (explore), second half at beta_end (exploit).
+    This addresses the finding that cold Boltzmann misses recursive core mutations
+    at small budgets but excels at large budgets.
+    """
+    n_hot = n // 2
+    n_cold = n - n_hot
+
+    hot_paths = select_boltzmann_energy(ss, paths, n_hot, beta_start, rng)
+
+    # Remove already selected from candidates for cold phase
+    hot_set = set(id(p) for p in hot_paths)
+    remaining = [p for p in paths if id(p) not in hot_set]
+    if not remaining:
+        remaining = paths
+
+    cold_paths = select_boltzmann_energy(ss, remaining, n_cold, beta_end, rng)
+
+    return hot_paths + cold_paths
+
+
+def select_coverage_greedy(
+    ss: StateSpace,
+    paths: list[ValidPath],
+    n: int,
+    rng: random.Random,
+) -> list[ValidPath]:
+    """Strategy E: Greedy coverage — always pick the path covering most new transitions.
+
+    This is the optimal baseline — the strategy a smart engineer would use.
+    """
+    selected: list[ValidPath] = []
+    covered: set[tuple[int, str, int]] = set()
+
+    # Precompute transitions per path
+    path_trans: list[set[tuple[int, str, int]]] = []
+    for p in paths:
+        trans = set()
+        state = ss.top
+        for step in p.steps:
+            trans.add((state, step.label, step.target))
+            state = step.target
+        path_trans.append(trans)
+
+    remaining = list(range(len(paths)))
+
+    for _ in range(min(n, len(paths))):
+        if not remaining:
+            break
+        # Pick path with most uncovered transitions
+        best_idx = max(remaining, key=lambda i: len(path_trans[i] - covered))
+        selected.append(paths[best_idx])
+        covered |= path_trans[best_idx]
+        remaining.remove(best_idx)
+
+    return selected
 
 
 def format_results(summaries: list[StrategyComparison]) -> str:
