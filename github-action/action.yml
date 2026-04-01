@@ -1,0 +1,91 @@
+name: 'Reticulate Protocol Check'
+description: 'Check client conformance against session type protocols. Fails if violations found.'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  session-type:
+    description: 'Session type string (e.g., "rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}")'
+    required: false
+  protocol:
+    description: 'Named protocol from registry (e.g., "java_iterator")'
+    required: false
+  trace-file:
+    description: 'Path to file with traces (one per line, comma-separated)'
+    required: false
+  trace:
+    description: 'Single trace (comma-separated, e.g., "hasNext,TRUE,next,hasNext,FALSE")'
+    required: false
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
+
+outputs:
+  conforming:
+    description: 'Number of conforming traces'
+  violating:
+    description: 'Number of violating traces'
+  result-json:
+    description: 'Full result as JSON'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install reticulate
+      shell: bash
+      run: pip install -e ${{ github.action_path }}/..
+
+    - name: Run conformance check
+      id: check
+      shell: bash
+      run: |
+        ARGS="check"
+        if [ -n "${{ inputs.protocol }}" ]; then
+          ARGS="$ARGS --protocol ${{ inputs.protocol }}"
+        elif [ -n "${{ inputs.session-type }}" ]; then
+          ARGS="$ARGS '${{ inputs.session-type }}'"
+        else
+          echo "Error: provide session-type or protocol input"
+          exit 1
+        fi
+
+        if [ -n "${{ inputs.trace-file }}" ]; then
+          ARGS="$ARGS --trace-file ${{ inputs.trace-file }}"
+        elif [ -n "${{ inputs.trace }}" ]; then
+          ARGS="$ARGS '${{ inputs.trace }}'"
+        else
+          echo "Error: provide trace or trace-file input"
+          exit 1
+        fi
+
+        ARGS="$ARGS --json"
+        RESULT=$(eval reticulate $ARGS 2>&1) || true
+        echo "result-json=$RESULT" >> $GITHUB_OUTPUT
+        echo "$RESULT" | python3 -c "
+        import json, sys
+        data = json.load(sys.stdin)
+        if 'conforming' in data:
+            print(f'conforming={data[\"conforming\"]}')
+            print(f'violating={data[\"violating\"]}')
+            if data['violating'] > 0:
+                print('::error::Protocol violations found')
+                for v in data.get('violations', []):
+                    print(f'::error::{v}')
+                sys.exit(1)
+        else:
+            conforming = 1 if data.get('conforms') else 0
+            violating = 0 if data.get('conforms') else 1
+            print(f'conforming={conforming}')
+            print(f'violating={violating}')
+            if not data.get('conforms'):
+                for v in data.get('violations', []):
+                    print(f'::error::Step {v[\"step\"]}: {v[\"method\"]} - {v[\"explanation\"]}')
+                sys.exit(1)
+        " >> $GITHUB_OUTPUT

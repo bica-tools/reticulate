@@ -32,9 +32,15 @@ def main(argv: list[str] | None = None) -> None:
     """
     raw = argv if argv is not None else sys.argv[1:]
 
-    # Dispatch: if first positional is "modular", use the modular subcommand
+    # Dispatch subcommands
     if raw and raw[0] == "modular":
         _main_modular(raw[1:])
+        return
+    if raw and raw[0] == "check":
+        _main_check(raw[1:])
+        return
+    if raw and raw[0] == "extract":
+        _main_extract(raw[1:])
         return
 
     # Legacy interface
@@ -468,6 +474,230 @@ def _main_modular(argv: list[str]) -> None:
             )
             sys.exit(1)
         print(f"Hasse diagram: {out}", file=sys.stderr)
+
+
+def _main_check(argv: list[str]) -> None:
+    """Subcommand: check client traces against a session type.
+
+    Usage::
+
+        reticulate check <type-string> <trace>
+        reticulate check <type-string> --trace-file <file>
+        reticulate check --protocol <name> <trace>
+
+    A trace is a comma-separated sequence of method calls + selection outcomes.
+    Example: ``hasNext,TRUE,next,hasNext,FALSE``
+    """
+    parser = argparse.ArgumentParser(
+        prog="reticulate check",
+        description="Check client trace conformance against a session type.",
+    )
+    parser.add_argument(
+        "type_string",
+        nargs="?",
+        default=None,
+        help='Session type string, e.g. "rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}"',
+    )
+    parser.add_argument(
+        "trace",
+        nargs="?",
+        default=None,
+        help='Comma-separated trace, e.g. "hasNext,TRUE,next,hasNext,FALSE"',
+    )
+    parser.add_argument(
+        "--protocol", "-p",
+        default=None,
+        help="Use a named protocol from the L3 extractor registry",
+    )
+    parser.add_argument(
+        "--trace-file", "-t",
+        default=None,
+        metavar="FILE",
+        help="Read traces from FILE (one per line, comma-separated)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
+    )
+    args = parser.parse_args(argv)
+
+    from reticulate.conformance_checker import (
+        check_conformance, check_batch, format_report,
+    )
+
+    # Resolve session type
+    if args.protocol:
+        from reticulate.l3_extractor import API_REGISTRY, extract_session_type
+        if args.protocol not in API_REGISTRY:
+            print(f"Unknown protocol: {args.protocol}", file=sys.stderr)
+            print(f"Available: {', '.join(API_REGISTRY.keys())}", file=sys.stderr)
+            sys.exit(1)
+        api = API_REGISTRY[args.protocol]()
+        st_str = extract_session_type(api)
+        # When --protocol is used, type_string positional holds the trace
+        if args.type_string and not args.trace:
+            args.trace = args.type_string
+    elif args.type_string:
+        st_str = args.type_string
+    else:
+        print("Error: provide a session type string or --protocol <name>", file=sys.stderr)
+        sys.exit(1)
+
+    # Resolve traces
+    traces: list[list[str]] = []
+    if args.trace_file:
+        with open(args.trace_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    traces.append([m.strip() for m in line.split(",")])
+    elif args.trace:
+        traces.append([m.strip() for m in args.trace.split(",")])
+    else:
+        # Read traces from stdin
+        print("Enter traces (comma-separated, one per line, Ctrl-D to finish):",
+              file=sys.stderr)
+        for line in sys.stdin:
+            line = line.strip()
+            if line:
+                traces.append([m.strip() for m in line.split(",")])
+
+    if not traces:
+        print("Error: no traces provided", file=sys.stderr)
+        sys.exit(1)
+
+    # Check conformance
+    if len(traces) == 1:
+        result = check_conformance(st_str, traces[0])
+        if args.json:
+            import json
+            print(json.dumps({
+                "conforms": result.conforms,
+                "is_complete": result.is_complete,
+                "steps_completed": result.steps_completed,
+                "violations": [
+                    {"step": v.step_index, "method": v.method,
+                     "available": v.available_methods, "explanation": v.explanation}
+                    for v in result.violations
+                ],
+                "coverage": result.coverage,
+            }, indent=2))
+        else:
+            print(result.summary())
+            for v in result.violations:
+                print(f"  {v}")
+    else:
+        batch = check_batch(st_str, traces)
+        if args.json:
+            import json
+            print(json.dumps({
+                "total": batch.total_traces,
+                "conforming": batch.conforming,
+                "violating": batch.violating,
+                "incomplete": batch.incomplete,
+                "conformance_rate": batch.conformance_rate,
+                "violations": batch.violation_summary,
+            }, indent=2))
+        else:
+            print(format_report(batch))
+
+    # Exit code: 0 if all conform, 1 if violations
+    if len(traces) == 1:
+        sys.exit(0 if result.conforms else 1)
+    else:
+        sys.exit(0 if batch.violating == 0 else 1)
+
+
+def _main_extract(argv: list[str]) -> None:
+    """Subcommand: extract session type from an API specification.
+
+    Usage::
+
+        reticulate extract --openapi <file.json>
+        reticulate extract --protocol <name>
+        reticulate extract --list
+    """
+    parser = argparse.ArgumentParser(
+        prog="reticulate extract",
+        description="Extract session types from API specifications.",
+    )
+    parser.add_argument(
+        "--openapi",
+        default=None,
+        metavar="FILE",
+        help="Extract from an OpenAPI 3.x JSON file",
+    )
+    parser.add_argument(
+        "--protocol", "-p",
+        default=None,
+        help="Extract from a named L3 protocol in the registry",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        dest="list_protocols",
+        help="List available protocols in the registry",
+    )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Also run lattice analysis on extracted types",
+    )
+    args = parser.parse_args(argv)
+
+    if args.list_protocols:
+        from reticulate.l3_extractor import API_REGISTRY
+        print("Available protocols:")
+        for name in sorted(API_REGISTRY.keys()):
+            api = API_REGISTRY[name]()
+            print(f"  {name:<30} {api.name}")
+        return
+
+    if args.openapi:
+        import json
+        with open(args.openapi) as f:
+            spec = json.load(f)
+        from reticulate.importers import from_openapi
+        tag_types = from_openapi(spec)
+        for tag, st_str in tag_types.items():
+            print(f"# {tag}")
+            print(st_str)
+            if args.analyze:
+                _analyze_extracted(st_str)
+            print()
+
+    elif args.protocol:
+        from reticulate.l3_extractor import API_REGISTRY, extract_session_type
+        if args.protocol not in API_REGISTRY:
+            print(f"Unknown protocol: {args.protocol}", file=sys.stderr)
+            print(f"Available: {', '.join(sorted(API_REGISTRY.keys()))}", file=sys.stderr)
+            sys.exit(1)
+        api = API_REGISTRY[args.protocol]()
+        st_str = extract_session_type(api)
+        print(f"# {api.name}")
+        print(st_str)
+        if args.analyze:
+            _analyze_extracted(st_str)
+
+    else:
+        print("Error: provide --openapi <file>, --protocol <name>, or --list",
+              file=sys.stderr)
+        sys.exit(1)
+
+
+def _analyze_extracted(st_str: str) -> None:
+    """Print lattice analysis for an extracted session type."""
+    try:
+        ast = parse(st_str)
+        ss = build_statespace(ast)
+        lr = check_lattice(ss)
+        dr = check_distributive(ss)
+        print(f"  States: {len(ss.states)}, Transitions: {len(ss.transitions)}")
+        print(f"  Lattice: {lr.is_lattice}, Classification: {dr.classification}")
+        print(f"  Distributive: {dr.is_distributive}, Modular: {dr.is_modular}")
+    except Exception as e:
+        print(f"  Analysis error: {e}", file=sys.stderr)
 
 
 def _print_summary(

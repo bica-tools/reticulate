@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reticulate"
-version = "0.1.0"
-description = "Session types as algebraic reticulates — lattice checker and toolchain"
+version = "0.2.0"
+description = "Session types as algebraic reticulates — lattice checker, conformance testing, and protocol extraction"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
