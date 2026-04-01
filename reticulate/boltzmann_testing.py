@@ -384,6 +384,8 @@ def run_trial(
         selected = select_entropy_weighted(ss, paths, budget, beta or 1.0, rng)
     elif strategy == "adaptive":
         selected = select_adaptive(ss, paths, budget, 0.1, beta or 3.0, rng)
+    elif strategy == "rarity":
+        selected = select_rarity_boltzmann(ss, paths, budget, beta or 1.0, rng)
     elif strategy == "greedy":
         selected = select_coverage_greedy(ss, paths, budget, rng)
     else:
@@ -464,7 +466,7 @@ def run_experiment(
 
         # Boltzmann strategies at each β
         for beta in betas:
-            for strategy in ["energy", "length", "entropy", "adaptive"]:
+            for strategy in ["energy", "length", "entropy", "adaptive", "rarity"]:
                 for trial in range(n_trials):
                     t = run_trial(ss, paths, mutants, strategy, beta, budget,
                                  random.Random(rng.randint(0, 10**9)))
@@ -544,6 +546,50 @@ def select_adaptive(
     cold_paths = select_boltzmann_energy(ss, remaining, n_cold, beta_end, rng)
 
     return hot_paths + cold_paths
+
+
+def path_rarity(ss: StateSpace, path: ValidPath, paths: list[ValidPath]) -> float:
+    """Rarity score: sum of 1/coverage(t) for each transition t on the path.
+
+    High rarity = path covers transitions that few other paths cover.
+    This is the "testing energy" that should correlate with defect detection.
+    """
+    # Count coverage of each transition
+    coverage: dict[tuple[int, str, int], int] = {}
+    for p in paths:
+        state = ss.top
+        for step in p.steps:
+            edge = (state, step.label, step.target)
+            coverage[edge] = coverage.get(edge, 0) + 1
+            state = step.target
+
+    # Compute rarity for this path
+    rarity = 0.0
+    state = ss.top
+    for step in path.steps:
+        edge = (state, step.label, step.target)
+        c = coverage.get(edge, 1)
+        rarity += 1.0 / c
+        state = step.target
+    return rarity
+
+
+def select_rarity_boltzmann(
+    ss: StateSpace,
+    paths: list[ValidPath],
+    n: int,
+    beta: float,
+    rng: random.Random,
+) -> list[ValidPath]:
+    """Strategy F: Rarity-weighted Boltzmann — favor paths covering rare transitions.
+
+    This is the "right" energy for testing: E(path) = Σ 1/coverage(transition).
+    Weight ∝ exp(+β · rarity) — POSITIVE sign: favor high rarity.
+    """
+    rarities = [path_rarity(ss, p, paths) for p in paths]
+    max_r = max(rarities) if rarities else 0
+    weights = [math.exp(beta * (r - max_r)) for r in rarities]
+    return _weighted_sample(paths, weights, n, rng)
 
 
 def select_coverage_greedy(
