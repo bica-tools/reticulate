@@ -566,3 +566,215 @@ class TestPrettyProgram:
         p = Program(definitions=(d,))
         assert d.name == "S"
         assert p.definitions[0] is d
+
+
+# ============================================================================
+# H. Real-world equation-system benchmarks (20 tests)
+# ============================================================================
+
+from reticulate.lattice import check_lattice, check_distributive
+
+
+# -- Benchmark equation-system strings --
+
+EQUATION_BENCHMARKS: dict[str, tuple[str, bool]] = {
+    # (equation_string, expected_distributive)
+
+    # Mungo Stack protocol (3 named phases, mutual recursion)
+    "stack": (
+        "Em = &{push: NE, dealloc: end}\n"
+        "NE = &{push: NE, pop: Unk}\n"
+        "Unk = &{push: NE, isEmpty: +{EM: Em, NE: NE}}",
+        True,
+    ),
+
+    # Java Iterator (single self-recursion, equation form)
+    "iterator": (
+        "Iter = &{hasNext: +{TRUE: &{next: Iter}, FALSE: end}}",
+        True,
+    ),
+
+    # JDBC Connection (single self-recursion, many methods)
+    "jdbc_connection": (
+        "Conn = &{createStatement: Conn, prepareStatement: Conn, "
+        "commit: Conn, rollback: Conn, close: end}",
+        True,
+    ),
+
+    # Two-phase file: Open vs Closed phases (must have end)
+    "file_two_phase": (
+        "Closed = &{open: Open, destroy: end}\n"
+        "Open = &{read: +{DATA: Open, EOF: Draining}, write: Open, close: Closed}\n"
+        "Draining = &{close: Closed}",
+        True,
+    ),
+
+    # Database cursor (3 phases: fresh, executed, fetching)
+    "db_cursor": (
+        "Fresh = &{execute: Executed, close: end}\n"
+        "Executed = &{fetchone: +{ROW: Fetching, DONE: Executed}, close: end}\n"
+        "Fetching = &{fetchone: +{ROW: Fetching, DONE: Executed}, close: end}",
+        True,
+    ),
+
+    # TCP socket (4 phases)
+    "tcp_socket": (
+        "Init = &{bind: Bound, close: end}\n"
+        "Bound = &{listen: Listening, close: end}\n"
+        "Listening = &{accept: Connected, close: end}\n"
+        "Connected = &{send: Connected, recv: Connected, close: end}",
+        True,
+    ),
+
+    # Lock with tryLock (selection) — dispose to terminate
+    "lock": (
+        "Unlocked = &{lock: Locked, tryLock: +{TRUE: Locked, FALSE: Unlocked}, dispose: end}\n"
+        "Locked = &{unlock: Unlocked}",
+        True,
+    ),
+
+    # StringBuilder (single phase, self-loop)
+    "string_builder": (
+        "SB = &{append: SB, insert: SB, delete: SB, toString: end}",
+        True,
+    ),
+
+    # Channel with handshake (mutual recursion: negotiate/transfer)
+    "channel_handshake": (
+        "Negotiate = &{propose: +{ACCEPT: Transfer, REJECT: Negotiate}}\n"
+        "Transfer = &{send: Transfer, recv: Transfer, close: end}",
+        True,
+    ),
+
+    # Promise/Future (2 phases)
+    "promise": (
+        "Pending = &{resolve: Fulfilled, reject: Rejected}\n"
+        "Fulfilled = &{get: end}\n"
+        "Rejected = &{getError: end}",
+        True,
+    ),
+
+    # Transaction (3 phases with rollback)
+    "transaction": (
+        "Active = &{read: Active, write: Active, commit: Committed, rollback: Aborted}\n"
+        "Committed = &{close: end}\n"
+        "Aborted = &{close: end}",
+        True,
+    ),
+
+    # Stream with buffering (2 phases)
+    "buffered_stream": (
+        "Empty = &{write: NonEmpty, close: end}\n"
+        "NonEmpty = &{write: NonEmpty, flush: Empty, read: +{DATA: NonEmpty, EMPTY: Empty}, close: end}",
+        True,
+    ),
+
+    # HTTP connection (request/response cycle)
+    "http_connection": (
+        "Idle = &{request: AwaitResponse, close: end}\n"
+        "AwaitResponse = &{getStatus: +{OK: ReadBody, ERROR: Idle}}\n"
+        "ReadBody = &{read: +{DATA: ReadBody, EOF: Idle}, close: end}",
+        True,
+    ),
+
+    # Game session (lobby/playing/finished)
+    "game_session": (
+        "Lobby = &{ready: +{START: Playing, WAIT: Lobby}, leave: end}\n"
+        "Playing = &{move: +{WIN: Finished, LOSE: Finished, CONTINUE: Playing}}\n"
+        "Finished = &{rematch: Lobby, quit: end}",
+        True,
+    ),
+
+    # Elevator (3 floors, mutual recursion)
+    "elevator": (
+        "F1 = &{up: F2, open: F1, close: end}\n"
+        "F2 = &{up: F3, down: F1, open: F2}\n"
+        "F3 = &{down: F2, open: F3}",
+        True,
+    ),
+
+    # Queue with empty/nonempty phases (like Stack)
+    "queue": (
+        "Empty = &{enqueue: NonEmpty, destroy: end}\n"
+        "NonEmpty = &{enqueue: NonEmpty, dequeue: +{LAST: Empty, MORE: NonEmpty}, peek: NonEmpty}",
+        True,
+    ),
+
+    # Semaphore (counting: 0, 1, 2+)
+    "semaphore": (
+        "Zero = &{acquire: One, destroy: end}\n"
+        "One = &{acquire: Multi, release: Zero}\n"
+        "Multi = &{acquire: Multi, release: +{ONE: One, MULTI: Multi}}",
+        True,
+    ),
+
+    # Parser (tokenize/parse/done phases)
+    "parser_phases": (
+        "Init = &{setInput: Tokenizing}\n"
+        "Tokenizing = &{nextToken: +{TOKEN: Tokenizing, EOF: Parsing}}\n"
+        "Parsing = &{parse: +{OK: Done, ERROR: Init}}\n"
+        "Done = &{getResult: end}",
+        True,
+    ),
+
+    # Auth session (login/authenticated/expired)
+    "auth_session": (
+        "Unauthenticated = &{login: +{OK: Authenticated, FAIL: Unauthenticated}}\n"
+        "Authenticated = &{request: Authenticated, refresh: +{OK: Authenticated, EXPIRED: Unauthenticated}, logout: end}",
+        True,
+    ),
+
+    # Shopping cart (empty/active/checkout)
+    "shopping_cart": (
+        "EmptyCart = &{addItem: ActiveCart}\n"
+        "ActiveCart = &{addItem: ActiveCart, removeItem: +{LAST: EmptyCart, MORE: ActiveCart}, checkout: Checkout}\n"
+        "Checkout = &{pay: +{OK: end, FAIL: ActiveCart}, cancel: ActiveCart}",
+        True,
+    ),
+}
+
+
+class TestEquationBenchmarks:
+    """Verify all equation-system benchmarks produce lattices."""
+
+    @pytest.mark.parametrize("name", EQUATION_BENCHMARKS.keys())
+    def test_is_lattice(self, name: str) -> None:
+        source, _ = EQUATION_BENCHMARKS[name]
+        prog = parse_program(source)
+        ast = resolve(prog)
+        ss = build_statespace(ast)
+        result = check_lattice(ss)
+        assert result.is_lattice, (
+            f"Benchmark {name!r} is NOT a lattice: {result.counterexample}"
+        )
+
+    @pytest.mark.parametrize("name", EQUATION_BENCHMARKS.keys())
+    def test_distributivity(self, name: str) -> None:
+        source, expected_dist = EQUATION_BENCHMARKS[name]
+        prog = parse_program(source)
+        ast = resolve(prog)
+        ss = build_statespace(ast)
+        result = check_distributive(ss)
+        assert result.is_distributive == expected_dist, (
+            f"Benchmark {name!r}: expected distributive={expected_dist}, "
+            f"got {result.is_distributive}"
+        )
+
+    @pytest.mark.parametrize("name", EQUATION_BENCHMARKS.keys())
+    def test_has_top_and_bottom(self, name: str) -> None:
+        source, _ = EQUATION_BENCHMARKS[name]
+        prog = parse_program(source)
+        ast = resolve(prog)
+        ss = build_statespace(ast)
+        assert ss.top is not None
+        assert ss.bottom is not None
+        assert ss.top != ss.bottom or len(ss.states) == 1
+
+    @pytest.mark.parametrize("name", EQUATION_BENCHMARKS.keys())
+    def test_roundtrip_parse(self, name: str) -> None:
+        """Equation text survives parse → pretty → re-parse."""
+        source, _ = EQUATION_BENCHMARKS[name]
+        prog = parse_program(source)
+        text = pretty_program(prog)
+        prog2 = parse_program(text)
+        assert len(prog2.definitions) == len(prog.definitions)
