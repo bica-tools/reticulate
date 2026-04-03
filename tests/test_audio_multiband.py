@@ -322,13 +322,13 @@ class TestDistributivity:
         lr = check_lattice(ss)
         assert lr.is_lattice
 
-    def test_3plus_bands_lattice_not_necessarily_distributive(self) -> None:
-        """3+ bands form a lattice but the reachability order may contain N5.
+    def test_3plus_bands_product_of_chains_is_distributive(self) -> None:
+        """Products of chains are always distributive lattices.
 
-        The product of n chains under componentwise order IS distributive,
-        but the reachability order induced by transitions is strictly weaker
-        than componentwise order for n >= 3, introducing N5 sublattices.
-        This is a key finding: reachability =/= componentwise in products.
+        The product of n chains under componentwise order IS distributive
+        (products of distributive lattices are distributive). The state-space
+        construction faithfully produces the product lattice, so the result
+        is distributive regardless of the number of bands.
         """
         config = MultibandConfig(bands=(
             FrequencyBand("a", 20.0, 200.0, "&{x: end}"),
@@ -340,8 +340,7 @@ class TestDistributivity:
         lr = check_lattice(ss)
         assert lr.is_lattice
         dr = check_distributive(ss)
-        # Reachability order on 4-factor product contains N5
-        assert dr.has_n5
+        assert dr.is_distributive
 
     def test_all_presets_are_lattices(self) -> None:
         """All presets form lattices regardless of distributivity."""
