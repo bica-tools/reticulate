@@ -522,16 +522,9 @@ from reticulate.matrix import (
 from reticulate.tropical import (
     TropicalResult,
     analyze_tropical,
-    critical_graph,
-    max_cycle_mean,
-    tropical_add,
     tropical_determinant,
     tropical_distance,
-    tropical_eigenvector,
-    tropical_matrix_mul,
-    tropical_matrix_power,
-    tropical_mul,
-    tropical_spectral_radius,
+    tropical_eigenvalue,
 )
 from reticulate.max_plus_paths import (
     MaxPlusPathResult,

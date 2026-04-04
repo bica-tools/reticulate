@@ -26,6 +26,40 @@ if TYPE_CHECKING:
 from reticulate.zeta import _state_list, _adjacency
 
 INF = float('inf')
+NEG_INF = float('-inf')
+
+
+# ---------------------------------------------------------------------------
+# Max-plus algebra primitives
+# ---------------------------------------------------------------------------
+
+def tropical_add(a: float, b: float) -> float:
+    """Max-plus addition: max(a, b). Identity: -inf."""
+    return max(a, b)
+
+
+def tropical_mul(a: float, b: float) -> float:
+    """Max-plus multiplication: a + b. Identity: 0. Absorbing: -inf."""
+    if a == -INF or b == -INF:
+        return -INF
+    return a + b
+
+
+def _maxplus_adjacency_matrix(ss: "StateSpace") -> list[list[float]]:
+    """Build the max-plus adjacency matrix for a state space.
+
+    Entry A[i][j] = 1 if there is a transition from state i to state j,
+    -inf otherwise. Uses the index mapping from _state_list.
+    """
+    states = _state_list(ss)
+    idx = {s: i for i, s in enumerate(states)}
+    n = len(states)
+    A = [[-INF] * n for _ in range(n)]
+    for src, _label, tgt in ss.transitions:
+        i, j = idx.get(src), idx.get(tgt)
+        if i is not None and j is not None:
+            A[i][j] = 1.0
+    return A
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +348,108 @@ def shortest_path_top_bottom(ss: "StateSpace") -> int:
     bot_i = idx[ss.bottom]
     val = D[top_i][bot_i]
     return int(val) if val < INF else 0
+
+
+# ---------------------------------------------------------------------------
+# Matrix operations (max-plus)
+# ---------------------------------------------------------------------------
+
+def tropical_matrix_mul(A: list[list[float]], B: list[list[float]]) -> list[list[float]]:
+    """Max-plus matrix multiplication: C[i][j] = max_k (A[i][k] + B[k][j])."""
+    n = len(A)
+    m = len(B[0]) if B else 0
+    p = len(B)
+    C = [[-INF] * m for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            for k in range(p):
+                val = tropical_mul(A[i][k], B[k][j])
+                C[i][j] = tropical_add(C[i][j], val)
+    return C
+
+
+def tropical_matrix_power(A: list[list[float]], k: int) -> list[list[float]]:
+    """Max-plus matrix power A^k (k repeated multiplications)."""
+    n = len(A)
+    # Identity: I[i][i] = 0, I[i][j] = -inf for i != j
+    result = [[-INF] * n for _ in range(n)]
+    for i in range(n):
+        result[i][i] = 0.0
+    base = [row[:] for row in A]
+    while k > 0:
+        if k & 1:
+            result = tropical_matrix_mul(result, base)
+        base = tropical_matrix_mul(base, base)
+        k >>= 1
+    return result
+
+
+def tropical_spectral_radius(ss: "StateSpace") -> float:
+    """Max-plus spectral radius (same as tropical eigenvalue / max cycle mean)."""
+    return tropical_eigenvalue(ss)
+
+
+def tropical_eigenvector(ss: "StateSpace") -> list[float]:
+    """Approximate max-plus eigenvector via power iteration.
+
+    Returns a vector v where A ⊗ v ≈ λ ⊗ v (max-plus sense),
+    where λ is the tropical eigenvalue.
+    """
+    A = _maxplus_adjacency_matrix(ss)
+    n = len(A)
+    if n == 0:
+        return []
+    # Initialize with zeros
+    v = [0.0] * n
+    # Power iteration (max-plus): v ← A ⊗ v, then normalize
+    for _ in range(n + 1):
+        new_v = [-INF] * n
+        for i in range(n):
+            for j in range(n):
+                new_v[i] = tropical_add(new_v[i], tropical_mul(A[i][j], v[j]))
+        # Normalize by subtracting max
+        mx = max(new_v) if any(x > -INF for x in new_v) else 0.0
+        if mx > -INF:
+            v = [x - mx for x in new_v]
+        else:
+            v = new_v
+    return v
+
+
+def critical_graph(ss: "StateSpace") -> list[tuple[int, int]]:
+    """Edges on critical cycles (achieving the max cycle mean).
+
+    An edge (i,j) is critical if it lies on a cycle whose mean weight
+    equals the tropical eigenvalue (max cycle mean).
+    """
+    states = _state_list(ss)
+    idx = {s: i for i, s in enumerate(states)}
+    n = len(states)
+    if n == 0:
+        return []
+
+    lam = tropical_eigenvalue(ss)
+    if lam == 0.0:
+        return []  # Acyclic — no cycles
+
+    A = _maxplus_adjacency_matrix(ss)
+    D = tropical_distance(ss)
+
+    critical = []
+    for src, _label, tgt in ss.transitions:
+        i, j = idx.get(src), idx.get(tgt)
+        if i is None or j is None:
+            continue
+        # Edge (i,j) is critical if: D[j][i] + A[i][j] == lam * cycle_length
+        # Simplified check: D[j][i] + 1 achieves cycle mean >= lam
+        if D[j][i] < INF:
+            cycle_len = D[j][i] + 1
+            if cycle_len > 0:
+                mean = cycle_len / cycle_len  # weight = cycle_len (unit edges)
+                if abs(mean - lam) < 1e-10 or mean >= lam - 1e-10:
+                    critical.append((src, tgt))
+
+    return critical
 
 
 # ---------------------------------------------------------------------------
