@@ -68,7 +68,72 @@ AGENTS: dict[str, AgentType] = {
         name="Writer",
         protocol="A2A",
         session_type="&{writePaper: +{paperReady: end}}",
-        description="Writes 5000+ word educational paper",
+        description="Generic writer: 5000+ word educational step paper with worked examples",
+        transport="Agent()",
+    ),
+    # --- Specialized Writers by Purpose ---
+    "StepWriter": AgentType(
+        name="StepWriter",
+        protocol="A2A",
+        session_type="rec X . &{writePaper: +{paperReady: &{addExercises: +{exercisesReady: &{addProofs: +{proofsReady: end, needsRevision: X}}}}}}",
+        description="Step paper specialist: 5000-6000 word educational paper with exercises.tex and proofs.tex companion files. Follows scientific method structure: observe→question→hypothesize→predict→experiment→analyze→conclude→explore.",
+        transport="Agent()",
+    ),
+    "MonographWriter": AgentType(
+        name="MonographWriter",
+        protocol="A2A",
+        session_type="rec X . &{writeChapter: +{chapterReady: &{crossRef: +{consistent: end, needsFix: X}}}}",
+        description="Book chapter writer for the monograph. Maintains narrative thread, back-references to prior chapters, forward pointers. 8000-12000 words per chapter.",
+        transport="Agent()",
+    ),
+    # --- Specialized Writers by Venue Type ---
+    "TOPLASWriter": AgentType(
+        name="TOPLASWriter",
+        protocol="A2A",
+        session_type="rec X . &{writeDraft: +{draftReady: &{checkRigor: +{rigorous: &{checkLength: +{adequate: end, tooShort: X}}, weakProof: X}}}}",
+        description="ACM TOPLAS specialist: 25000-40000 words, all proofs complete (no sketches), 50+ refs, Lean mechanisation cross-refs, full evaluation with RQs and threats to validity. ACM acmart format.",
+        transport="Agent()",
+    ),
+    "CONCURWriter": AgentType(
+        name="CONCURWriter",
+        protocol="A2A",
+        session_type="&{writeDraft: +{draftReady: &{trimToLimit: +{withinLimit: end, overLimit: &{cut: +{trimmed: end}}}}}}",
+        description="CONCUR/FoSSaCS/ESOP specialist: 15-20 page LIPIcs format, single sharp result with clean proof, 30+ refs. Formal definitions before examples. No tool section unless tool paper track.",
+        transport="Agent()",
+    ),
+    "ICEWriter": AgentType(
+        name="ICEWriter",
+        protocol="A2A",
+        session_type="&{writeDraft: +{draftReady: end}}",
+        description="ICE/PLACES workshop writer: 12-15 pages EPTCS format, work-in-progress OK, preliminary results welcome. Lighter evaluation, focus on novelty and discussion.",
+        transport="Agent()",
+    ),
+    "JournalWriter": AgentType(
+        name="JournalWriter",
+        protocol="A2A",
+        session_type="rec X . &{writeDraft: +{draftReady: &{expandEvaluation: +{evaluationDone: &{addAppendix: +{complete: end, needsMore: X}}}}}}",
+        description="General journal writer (LMCS, TCS, MSCS, Inf&Comp): 20000-35000 words, comprehensive proofs, extended evaluation, appendices for secondary results. Free OA journals preferred.",
+        transport="Agent()",
+    ),
+    "ToolPaperWriter": AgentType(
+        name="ToolPaperWriter",
+        protocol="A2A",
+        session_type="&{writeDraft: +{draftReady: &{addScreenshots: +{visualsReady: &{addBenchmarks: +{benchmarksReady: end}}}}}}",
+        description="Tool paper specialist (TACAS, CAV tool track, SoftwareX): architecture diagrams, API examples, installation instructions, benchmark tables, comparison with related tools. 10-15 pages.",
+        transport="Agent()",
+    ),
+    "SurveyWriter": AgentType(
+        name="SurveyWriter",
+        protocol="A2A",
+        session_type="rec X . &{writeSurvey: +{draftReady: &{checkCompleteness: +{complete: end, missingArea: &{addArea: X}}}}}",
+        description="Survey/SoK writer (CSUR, TOPS, JSA): taxonomy-driven, 80+ refs, comparison tables, open problems section. Systematic literature review methodology.",
+        transport="Agent()",
+    ),
+    "CrossDomainWriter": AgentType(
+        name="CrossDomainWriter",
+        protocol="A2A",
+        session_type="&{writeDraft: +{draftReady: &{validateMorphisms: +{morphismsValid: end, needsFix: &{fixMorphisms: +{fixed: end}}}}}}",
+        description="Cross-domain application writer (physics, biology, music, economics): bidirectional morphisms L(S)↔Domain MUST be built and classified. Every imported concept maps to safety/security/design/monitoring/testing actions.",
         transport="Agent()",
     ),
     "Prover": AgentType(
@@ -290,7 +355,12 @@ ORCHESTRATOR_TYPE = (
 # Phase classification
 RESEARCH_AGENTS = ("Researcher", "Formalizer", "LiteratureScout")
 BUILD_AGENTS = ("Implementer", "Tester", "Benchmarker")
-WRITE_AGENTS = ("Writer", "Prover", "TechWriter", "Archivist", "Librarian")
+WRITE_AGENTS = (
+    "Writer", "StepWriter", "MonographWriter",
+    "TOPLASWriter", "CONCURWriter", "ICEWriter", "JournalWriter",
+    "ToolPaperWriter", "SurveyWriter", "CrossDomainWriter",
+    "Prover", "TechWriter", "Archivist", "Librarian",
+)
 QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector", "PeerReviewer", "FactChecker")
 MANAGEMENT_AGENTS = ("Supervisor",)
 OPERATIONS_AGENTS = ("FrontendDev", "BackendDev", "CICDEngineer", "Deployer", "Publisher", "CommunityManager")
