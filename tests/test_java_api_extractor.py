@@ -346,15 +346,15 @@ class TestSelections:
     def test_connection_has_commit_outcomes(self):
         result = extract_session_type("java.sql.Connection")
         assert "OK" in result.inferred_type
-        assert "SQLError" in result.inferred_type
+        assert "SQL_ERROR" in result.inferred_type
 
     def test_sslsocket_has_handshake_outcomes(self):
         result = extract_session_type("javax.net.ssl.SSLSocket")
-        assert "HandshakeError" in result.inferred_type
+        assert "HANDSHAKE_ERROR" in result.inferred_type
 
     def test_socketchannel_has_connect_modes(self):
         result = extract_session_type("java.nio.channels.SocketChannel")
-        assert "immediate" in result.inferred_type or "pending" in result.inferred_type
+        assert "IMMEDIATE" in result.inferred_type or "PENDING" in result.inferred_type
 
     def test_inputstream_has_eof(self):
         result = extract_session_type("java.io.InputStream")

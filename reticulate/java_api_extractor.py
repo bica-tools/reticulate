@@ -109,33 +109,33 @@ JAVA_API_SPECS: dict[str, dict[str, Any]] = {
         # available() returns int (≥0)
         # markSupported() returns boolean
         "return_types": {
-            "read": ["data", "EOF"],
-            "available": ["ready"],
+            "read": ["DATA", "EOF"],
+            "available": ["READY"],
             "markSupported": ["TRUE", "FALSE"],
-            "skip": ["skipped"],
-            "mark": ["marked"],
-            "reset": ["restored"],
+            "skip": ["SKIPPED"],
+            "mark": ["MARKED"],
+            "reset": ["RESTORED"],
             "close": [],  # void — no selection
         },
         # Directed traces: (method, "receive") for calls,
         #                   (outcome, "send") for return values
         "directed_traces": [
-            # Read loop: read returns data, data, ..., EOF
-            [("read", "r"), ("data", "s"), ("read", "r"), ("data", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
+            # Read loop: read returns DATA, DATA, ..., EOF
+            [("read", "r"), ("DATA", "s"), ("read", "r"), ("DATA", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
             # Single read then EOF
             [("read", "r"), ("EOF", "s"), ("close", "r")],
             # Available check then read
-            [("available", "r"), ("ready", "s"), ("read", "r"), ("data", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
+            [("available", "r"), ("READY", "s"), ("read", "r"), ("DATA", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
             # Skip then read
-            [("skip", "r"), ("skipped", "s"), ("read", "r"), ("data", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
+            [("skip", "r"), ("SKIPPED", "s"), ("read", "r"), ("DATA", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
             # Mark/reset cycle
-            [("markSupported", "r"), ("TRUE", "s"), ("mark", "r"), ("marked", "s"), ("read", "r"), ("data", "s"), ("reset", "r"), ("restored", "s"), ("read", "r"), ("data", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
+            [("markSupported", "r"), ("TRUE", "s"), ("mark", "r"), ("MARKED", "s"), ("read", "r"), ("DATA", "s"), ("reset", "r"), ("RESTORED", "s"), ("read", "r"), ("DATA", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
             # markSupported returns false
-            [("markSupported", "r"), ("FALSE", "s"), ("read", "r"), ("data", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
+            [("markSupported", "r"), ("FALSE", "s"), ("read", "r"), ("DATA", "s"), ("read", "r"), ("EOF", "s"), ("close", "r")],
             # Direct close (empty stream)
             [("close", "r")],
             # Read single byte
-            [("read", "r"), ("data", "s"), ("close", "r")],
+            [("read", "r"), ("DATA", "s"), ("close", "r")],
         ],
     },
 
@@ -151,34 +151,34 @@ JAVA_API_SPECS: dict[str, dict[str, Any]] = {
         "lifecycle_phases": ["configure", "transact", "close"],
         # commit/rollback can succeed or throw SQLException
         "return_types": {
-            "createStatement": ["stmt"],
-            "prepareStatement": ["pstmt"],
-            "prepareCall": ["cstmt"],
-            "commit": ["OK", "SQLError"],
+            "createStatement": ["STMT"],
+            "prepareStatement": ["PSTMT"],
+            "prepareCall": ["CSTMT"],
+            "commit": ["OK", "SQL_ERROR"],
             "rollback": ["OK"],
-            "setAutoCommit": ["configured"],
-            "getMetaData": ["metadata"],
-            "setReadOnly": ["configured"],
-            "setTransactionIsolation": ["configured"],
+            "setAutoCommit": ["CONFIGURED"],
+            "getMetaData": ["METADATA"],
+            "setReadOnly": ["CONFIGURED"],
+            "setTransactionIsolation": ["CONFIGURED"],
             "close": [],
         },
         "directed_traces": [
             # Simple query + commit success
-            [("createStatement", "r"), ("stmt", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
+            [("createStatement", "r"), ("STMT", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
             # Prepared statement + commit
-            [("prepareStatement", "r"), ("pstmt", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
+            [("prepareStatement", "r"), ("PSTMT", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
             # Transaction with rollback
-            [("setAutoCommit", "r"), ("configured", "s"), ("createStatement", "r"), ("stmt", "s"), ("rollback", "r"), ("OK", "s"), ("close", "r")],
+            [("setAutoCommit", "r"), ("CONFIGURED", "s"), ("createStatement", "r"), ("STMT", "s"), ("rollback", "r"), ("OK", "s"), ("close", "r")],
             # Commit fails → rollback → close
-            [("createStatement", "r"), ("stmt", "s"), ("commit", "r"), ("SQLError", "s"), ("rollback", "r"), ("OK", "s"), ("close", "r")],
+            [("createStatement", "r"), ("STMT", "s"), ("commit", "r"), ("SQL_ERROR", "s"), ("rollback", "r"), ("OK", "s"), ("close", "r")],
             # Multiple statements + commit
-            [("setAutoCommit", "r"), ("configured", "s"), ("createStatement", "r"), ("stmt", "s"), ("createStatement", "r"), ("stmt", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
+            [("setAutoCommit", "r"), ("CONFIGURED", "s"), ("createStatement", "r"), ("STMT", "s"), ("createStatement", "r"), ("STMT", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
             # Read-only query
-            [("setReadOnly", "r"), ("configured", "s"), ("createStatement", "r"), ("stmt", "s"), ("close", "r")],
+            [("setReadOnly", "r"), ("CONFIGURED", "s"), ("createStatement", "r"), ("STMT", "s"), ("close", "r")],
             # Metadata inspection
-            [("getMetaData", "r"), ("metadata", "s"), ("close", "r")],
+            [("getMetaData", "r"), ("METADATA", "s"), ("close", "r")],
             # Set isolation + query + commit
-            [("setTransactionIsolation", "r"), ("configured", "s"), ("createStatement", "r"), ("stmt", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
+            [("setTransactionIsolation", "r"), ("CONFIGURED", "s"), ("createStatement", "r"), ("STMT", "s"), ("commit", "r"), ("OK", "s"), ("close", "r")],
             # Just close
             [("close", "r")],
         ],
@@ -193,20 +193,20 @@ JAVA_API_SPECS: dict[str, dict[str, Any]] = {
         # hasNext() returns boolean — THE canonical selection
         "return_types": {
             "hasNext": ["TRUE", "FALSE"],
-            "next": ["element"],
-            "remove": ["removed"],
+            "next": ["ELEMENT"],
+            "remove": ["REMOVED"],
         },
         "directed_traces": [
             # Standard iteration: check → true → get → check → true → get → check → false
-            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("FALSE", "s")],
+            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("FALSE", "s")],
             # Single element
-            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("FALSE", "s")],
+            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("FALSE", "s")],
             # Empty iterator
             [("hasNext", "r"), ("FALSE", "s")],
             # With remove
-            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("remove", "r"), ("removed", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("FALSE", "s")],
+            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("remove", "r"), ("REMOVED", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("FALSE", "s")],
             # Three elements
-            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("element", "s"), ("hasNext", "r"), ("FALSE", "s")],
+            [("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("TRUE", "s"), ("next", "r"), ("ELEMENT", "s"), ("hasNext", "r"), ("FALSE", "s")],
         ],
     },
 
@@ -223,30 +223,30 @@ JAVA_API_SPECS: dict[str, dict[str, Any]] = {
         "lifecycle_phases": ["configure", "handshake", "io", "close"],
         # startHandshake can succeed or fail (SSLHandshakeException)
         "return_types": {
-            "connect": ["connected"],
-            "startHandshake": ["OK", "HandshakeError"],
-            "getSession": ["session"],
-            "getInputStream": ["input"],
-            "getOutputStream": ["output"],
-            "setEnabledProtocols": ["configured"],
-            "setEnabledCipherSuites": ["configured"],
+            "connect": ["CONNECTED"],
+            "startHandshake": ["OK", "HANDSHAKE_ERROR"],
+            "getSession": ["SESSION"],
+            "getInputStream": ["INPUT"],
+            "getOutputStream": ["OUTPUT"],
+            "setEnabledProtocols": ["CONFIGURED"],
+            "setEnabledCipherSuites": ["CONFIGURED"],
             "close": [],
         },
         "directed_traces": [
             # Standard TLS: connect → handshake OK → get I/O → close
-            [("connect", "r"), ("connected", "s"), ("startHandshake", "r"), ("OK", "s"), ("getInputStream", "r"), ("input", "s"), ("getOutputStream", "r"), ("output", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("startHandshake", "r"), ("OK", "s"), ("getInputStream", "r"), ("INPUT", "s"), ("getOutputStream", "r"), ("OUTPUT", "s"), ("close", "r")],
             # Handshake fails → close
-            [("connect", "r"), ("connected", "s"), ("startHandshake", "r"), ("HandshakeError", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("startHandshake", "r"), ("HANDSHAKE_ERROR", "s"), ("close", "r")],
             # Configure before handshake
-            [("connect", "r"), ("connected", "s"), ("setEnabledProtocols", "r"), ("configured", "s"), ("setEnabledCipherSuites", "r"), ("configured", "s"), ("startHandshake", "r"), ("OK", "s"), ("getInputStream", "r"), ("input", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("setEnabledProtocols", "r"), ("CONFIGURED", "s"), ("setEnabledCipherSuites", "r"), ("CONFIGURED", "s"), ("startHandshake", "r"), ("OK", "s"), ("getInputStream", "r"), ("INPUT", "s"), ("close", "r")],
             # Read-only connection
-            [("connect", "r"), ("connected", "s"), ("startHandshake", "r"), ("OK", "s"), ("getInputStream", "r"), ("input", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("startHandshake", "r"), ("OK", "s"), ("getInputStream", "r"), ("INPUT", "s"), ("close", "r")],
             # Write-only connection
-            [("connect", "r"), ("connected", "s"), ("startHandshake", "r"), ("OK", "s"), ("getOutputStream", "r"), ("output", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("startHandshake", "r"), ("OK", "s"), ("getOutputStream", "r"), ("OUTPUT", "s"), ("close", "r")],
             # Session inspection
-            [("connect", "r"), ("connected", "s"), ("startHandshake", "r"), ("OK", "s"), ("getSession", "r"), ("session", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("startHandshake", "r"), ("OK", "s"), ("getSession", "r"), ("SESSION", "s"), ("close", "r")],
             # Full: session + both streams
-            [("connect", "r"), ("connected", "s"), ("startHandshake", "r"), ("OK", "s"), ("getSession", "r"), ("session", "s"), ("getInputStream", "r"), ("input", "s"), ("getOutputStream", "r"), ("output", "s"), ("close", "r")],
+            [("connect", "r"), ("CONNECTED", "s"), ("startHandshake", "r"), ("OK", "s"), ("getSession", "r"), ("SESSION", "s"), ("getInputStream", "r"), ("INPUT", "s"), ("getOutputStream", "r"), ("OUTPUT", "s"), ("close", "r")],
         ],
     },
 
@@ -262,30 +262,30 @@ JAVA_API_SPECS: dict[str, dict[str, Any]] = {
         # connect() in non-blocking: returns boolean (immediate or pending)
         # read() returns int: -1 on closed, 0 on no-data, >0 on data
         "return_types": {
-            "open": ["channel"],
-            "connect": ["immediate", "pending"],
-            "finishConnect": ["connected"],
-            "configureBlocking": ["configured"],
-            "read": ["data", "noData", "closed"],
-            "write": ["written"],
-            "register": ["key"],
+            "open": ["CHANNEL"],
+            "connect": ["IMMEDIATE", "PENDING"],
+            "finishConnect": ["CONNECTED"],
+            "configureBlocking": ["CONFIGURED"],
+            "read": ["DATA", "NO_DATA", "CLOSED"],
+            "write": ["WRITTEN"],
+            "register": ["KEY"],
             "close": [],
         },
         "directed_traces": [
             # Blocking connect + read data + write + close
-            [("open", "r"), ("channel", "s"), ("configureBlocking", "r"), ("configured", "s"), ("connect", "r"), ("immediate", "s"), ("read", "r"), ("data", "s"), ("write", "r"), ("written", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("configureBlocking", "r"), ("CONFIGURED", "s"), ("connect", "r"), ("IMMEDIATE", "s"), ("read", "r"), ("DATA", "s"), ("write", "r"), ("WRITTEN", "s"), ("close", "r")],
             # Non-blocking connect (pending)
-            [("open", "r"), ("channel", "s"), ("configureBlocking", "r"), ("configured", "s"), ("connect", "r"), ("pending", "s"), ("finishConnect", "r"), ("connected", "s"), ("read", "r"), ("data", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("configureBlocking", "r"), ("CONFIGURED", "s"), ("connect", "r"), ("PENDING", "s"), ("finishConnect", "r"), ("CONNECTED", "s"), ("read", "r"), ("DATA", "s"), ("close", "r")],
             # Selector-based: non-blocking + register
-            [("open", "r"), ("channel", "s"), ("configureBlocking", "r"), ("configured", "s"), ("connect", "r"), ("pending", "s"), ("finishConnect", "r"), ("connected", "s"), ("register", "r"), ("key", "s"), ("read", "r"), ("data", "s"), ("write", "r"), ("written", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("configureBlocking", "r"), ("CONFIGURED", "s"), ("connect", "r"), ("PENDING", "s"), ("finishConnect", "r"), ("CONNECTED", "s"), ("register", "r"), ("KEY", "s"), ("read", "r"), ("DATA", "s"), ("write", "r"), ("WRITTEN", "s"), ("close", "r")],
             # Read returns closed (peer disconnected)
-            [("open", "r"), ("channel", "s"), ("connect", "r"), ("immediate", "s"), ("read", "r"), ("closed", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("connect", "r"), ("IMMEDIATE", "s"), ("read", "r"), ("CLOSED", "s"), ("close", "r")],
             # Read-write loop
-            [("open", "r"), ("channel", "s"), ("connect", "r"), ("immediate", "s"), ("read", "r"), ("data", "s"), ("write", "r"), ("written", "s"), ("read", "r"), ("data", "s"), ("write", "r"), ("written", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("connect", "r"), ("IMMEDIATE", "s"), ("read", "r"), ("DATA", "s"), ("write", "r"), ("WRITTEN", "s"), ("read", "r"), ("DATA", "s"), ("write", "r"), ("WRITTEN", "s"), ("close", "r")],
             # Read returns no data (non-blocking)
-            [("open", "r"), ("channel", "s"), ("configureBlocking", "r"), ("configured", "s"), ("connect", "r"), ("pending", "s"), ("finishConnect", "r"), ("connected", "s"), ("read", "r"), ("noData", "s"), ("read", "r"), ("data", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("configureBlocking", "r"), ("CONFIGURED", "s"), ("connect", "r"), ("PENDING", "s"), ("finishConnect", "r"), ("CONNECTED", "s"), ("read", "r"), ("NO_DATA", "s"), ("read", "r"), ("DATA", "s"), ("close", "r")],
             # Immediate close
-            [("open", "r"), ("channel", "s"), ("close", "r")],
+            [("open", "r"), ("CHANNEL", "s"), ("close", "r")],
         ],
     },
 }
