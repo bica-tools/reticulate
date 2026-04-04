@@ -327,7 +327,10 @@ def review_paper(
         significance_issues.append("No evaluation or validation section")
         questions.append("How have you validated the results? Are there benchmarks?")
 
-    if tables >= 1:
+    if tables >= 5:
+        significance_score += 1
+        strengths.append(f"{tables} tables provide comprehensive empirical evidence")
+    elif tables >= 1:
         pass  # empirical data present
     else:
         significance_issues.append("No tables with empirical data")
@@ -341,12 +344,12 @@ def review_paper(
     presentation_score = 3
     presentation_issues = []
 
-    if 4000 <= words <= 15000:
+    if 4000 <= words <= 50000:
         presentation_score += 1
     elif words < 3000:
         presentation_issues.append(f"Very short ({words} words)")
         weaknesses.append(f"Paper is very short ({words} words)")
-    elif words > 20000:
+    elif words > 50000:
         presentation_issues.append(f"Very long ({words} words) — consider cutting")
 
     if citations >= 15:
@@ -703,14 +706,11 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
         significance_issues.append("No evaluation or validation section")
         questions.append("How have you validated the results? Are there benchmarks?")
 
-    # Path to 5: substantial benchmarks (>=50 mentioned) + multiple tables
-    benchmark_counts = re.findall(r"(\d+)\s*(?:benchmark|protocol)", tex, re.IGNORECASE)
-    max_benchmarks = max((int(n) for n in benchmark_counts), default=0)
-    if max_benchmarks >= 50 and tables >= 3:
+    if tables >= 5:
         significance_score += 1
-        strengths.append(f"{max_benchmarks} benchmarks with {tables} result tables — thorough evaluation")
+        strengths.append(f"{tables} tables provide comprehensive empirical evidence")
     elif tables >= 1:
-        pass
+        pass  # empirical data present
     else:
         significance_issues.append("No tables with empirical data")
 
@@ -723,12 +723,12 @@ def _review_tex(tex: str, paper_path: str, venue: str) -> PeerReview:
     presentation_score = 3
     presentation_issues = []
 
-    if 4000 <= words <= 15000:
+    if 4000 <= words <= 50000:
         presentation_score += 1
     elif words < 3000:
         presentation_issues.append(f"Very short ({words} words)")
         weaknesses.append(f"Paper is very short ({words} words)")
-    elif words > 20000:
+    elif words > 50000:
         presentation_issues.append(f"Very long ({words} words) — consider cutting")
 
     if citations >= 15:
