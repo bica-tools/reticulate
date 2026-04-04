@@ -58,7 +58,8 @@ class TestSpecCompleteness:
 
     @pytest.mark.parametrize("api_name", TARGET_APIS)
     def test_has_traces(self, api_name):
-        traces = JAVA_API_SPECS[api_name]["traces"]
+        spec = JAVA_API_SPECS[api_name]
+        traces = spec.get("directed_traces", spec.get("traces", []))
         assert len(traces) >= 5, f"{api_name}: need ≥5 traces, got {len(traces)}"
 
     @pytest.mark.parametrize("api_name", TARGET_APIS)
@@ -73,13 +74,21 @@ class TestSpecCompleteness:
 
     @pytest.mark.parametrize("api_name", TARGET_APIS)
     def test_traces_use_declared_methods(self, api_name):
+        """Directed traces: 'receive' steps must be declared methods."""
         spec = JAVA_API_SPECS[api_name]
         declared = set(spec["methods"])
-        for trace in spec["traces"]:
-            for method in trace:
-                assert method in declared, (
-                    f"{api_name}: trace uses '{method}' not in methods {declared}"
-                )
+        directed = spec.get("directed_traces", [])
+        if directed:
+            for dt in directed:
+                for label, direction in dt:
+                    if direction == "r":  # receive = method call
+                        assert label in declared, (
+                            f"{api_name}: trace calls '{label}' not in methods {declared}"
+                        )
+        else:
+            for trace in spec.get("traces", []):
+                for method in trace:
+                    assert method in declared
 
     def test_five_apis_exactly(self):
         assert len(JAVA_API_SPECS) == 5
@@ -309,6 +318,48 @@ class TestFullPipeline:
 # ---------------------------------------------------------------------------
 # Distributivity analysis
 # ---------------------------------------------------------------------------
+
+class TestSelections:
+    """Verify that return-value selections are properly extracted."""
+
+    TARGET_APIS = [
+        "java.io.InputStream",
+        "java.sql.Connection",
+        "java.util.Iterator",
+        "javax.net.ssl.SSLSocket",
+        "java.nio.channels.SocketChannel",
+    ]
+
+    @pytest.mark.parametrize("api_name", TARGET_APIS)
+    def test_has_selections(self, api_name):
+        """Every API type should contain at least one Select (+{...})."""
+        result = extract_session_type(api_name)
+        assert "+{" in result.inferred_type, (
+            f"{api_name} has no selections — return values not captured"
+        )
+
+    def test_iterator_has_true_false_selection(self):
+        result = extract_session_type("java.util.Iterator")
+        assert "TRUE" in result.inferred_type
+        assert "FALSE" in result.inferred_type
+
+    def test_connection_has_commit_outcomes(self):
+        result = extract_session_type("java.sql.Connection")
+        assert "OK" in result.inferred_type
+        assert "SQLError" in result.inferred_type
+
+    def test_sslsocket_has_handshake_outcomes(self):
+        result = extract_session_type("javax.net.ssl.SSLSocket")
+        assert "HandshakeError" in result.inferred_type
+
+    def test_socketchannel_has_connect_modes(self):
+        result = extract_session_type("java.nio.channels.SocketChannel")
+        assert "immediate" in result.inferred_type or "pending" in result.inferred_type
+
+    def test_inputstream_has_eof(self):
+        result = extract_session_type("java.io.InputStream")
+        assert "EOF" in result.inferred_type
+
 
 class TestDistributivity:
     """Analyze distributivity of extracted types."""
