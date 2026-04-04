@@ -732,12 +732,237 @@ def import_protocol(spec_json: str, format: str = "openapi") -> str:
         return error
 
 
+# ---------------------------------------------------------------------------
+# Agent monitoring — session type runtime conformance checking
+# ---------------------------------------------------------------------------
+
+# Map Claude Code subagent_type names to agent_registry.py AgentType names
+_SUBAGENT_TO_REGISTRY: dict[str, str] = {
+    "step-researcher": "Researcher",
+    "formalizer": "Formalizer",
+    "literature-scout": "LiteratureScout",
+    "step-implementer": "Implementer",
+    "tester": "Tester",
+    "benchmarker": "Benchmarker",
+    "step-paper-writer": "StepWriter",
+    "monograph-writer": "MonographWriter",
+    "toplas-writer": "TOPLASWriter",
+    "concur-writer": "CONCURWriter",
+    "ice-writer": "ICEWriter",
+    "journal-writer": "JournalWriter",
+    "tool-paper-writer": "ToolPaperWriter",
+    "survey-writer": "SurveyWriter",
+    "cross-domain-writer": "CrossDomainWriter",
+    "prover": "Prover",
+    "tech-report-writer": "TechWriter",
+    "archivist": "Archivist",
+    "librarian": "Librarian",
+    "exercise-writer": "ExerciseWriter",
+    "evaluator": "Evaluator",
+    "reviewer": "Reviewer",
+    "connector": "Connector",
+    "peer-reviewer": "PeerReviewer",
+    "fact-checker": "FactChecker",
+    "maturity-auditor": "Evaluator",  # closest match
+    "frontend-dev": "FrontendDev",
+    "backend-dev": "BackendDev",
+    "cicd-engineer": "CICDEngineer",
+    "deployer": "Deployer",
+    "publisher": "Publisher",
+    "community-manager": "CommunityManager",
+    "gatekeeper": "Gatekeeper",
+    "submission-strategist": "SubmissionStrategist",
+    "editor": "Editor",
+    "blog-writer": "BlogWriter",
+    "tutor": "Tutor",
+    "venue-matcher": "VenueMatcher",
+    "publication-planner": "PublicationPlanner",
+    "copy-editor": "CopyEditor",
+}
+
+# Singleton monitor — persists across tool calls within a session
+_monitor = None
+
+def _get_monitor():
+    """Get or create the singleton AgentMonitor."""
+    global _monitor
+    if _monitor is None:
+        from reticulate.agent_registry import AgentMonitor
+        _monitor = AgentMonitor()
+    return _monitor
+
+
+@mcp.tool()
+def agent_start(subagent_type: str, step_number: str = "", agent_id: str = "") -> str:
+    """Register an agent dispatch for session type conformance monitoring.
+
+    Call this BEFORE launching an agent via the Agent tool. Records the
+    agent instance and begins tracking its protocol state machine.
+
+    Args:
+        subagent_type: The Claude Code subagent type (e.g. 'step-researcher')
+        step_number: The step being worked on (e.g. '30v')
+        agent_id: Optional unique ID. Auto-generated if empty.
+
+    Returns:
+        Agent instance status with valid first transitions.
+    """
+    t0 = _log_call("agent_start", {"subagent_type": subagent_type, "step": step_number})
+    try:
+        monitor = _get_monitor()
+        registry_name = _SUBAGENT_TO_REGISTRY.get(subagent_type)
+        if registry_name is None:
+            return f"Unknown subagent type: {subagent_type}. Known: {sorted(_SUBAGENT_TO_REGISTRY.keys())}"
+
+        if not agent_id:
+            agent_id = f"{subagent_type}-{step_number or 'gen'}-{int(time.time()) % 10000}"
+
+        instance = monitor.start_agent(registry_name, agent_id, step_number)
+        status = monitor.get_status(agent_id)
+
+        result = (
+            f"Agent registered: {agent_id}\n"
+            f"  Type: {registry_name} ({subagent_type})\n"
+            f"  Step: {step_number}\n"
+            f"  Protocol: {_get_agent_protocol(registry_name)}\n"
+            f"  State: {status['state']}\n"
+            f"  Valid transitions: {status['valid_transitions']}\n"
+        )
+        _log_result("agent_start", t0, result)
+        return result
+    except Exception as e:
+        error = f"Error: {e}"
+        _log_error("agent_start", t0, error)
+        return error
+
+
+@mcp.tool()
+def agent_transition(agent_id: str, label: str) -> str:
+    """Record a protocol transition for a monitored agent.
+
+    Call this when an agent completes a phase of its work.
+    The monitor validates the transition against the agent's session type.
+
+    Args:
+        agent_id: The agent instance ID (from agent_start).
+        label: The transition label (e.g. 'investigate', 'report', 'implement').
+
+    Returns:
+        Transition result: valid/invalid, new state, next valid transitions.
+    """
+    t0 = _log_call("agent_transition", {"agent_id": agent_id, "label": label})
+    try:
+        monitor = _get_monitor()
+        valid = monitor.transition(agent_id, label)
+        status = monitor.get_status(agent_id)
+
+        if valid:
+            result = (
+                f"VALID transition: {label}\n"
+                f"  Agent: {agent_id}\n"
+                f"  New state: {status['state']}\n"
+                f"  Status: {status['status']}\n"
+                f"  Valid next: {status['valid_transitions']}\n"
+                f"  Transitions taken: {status['transitions_taken']}\n"
+            )
+        else:
+            result = (
+                f"VIOLATION: {label}\n"
+                f"  Agent: {agent_id}\n"
+                f"  {status['violation']}\n"
+                f"  Status: {status['status']}\n"
+            )
+        _log_result("agent_transition", t0, result)
+        return result
+    except Exception as e:
+        error = f"Error: {e}"
+        _log_error("agent_transition", t0, error)
+        return error
+
+
+@mcp.tool()
+def agent_complete(agent_id: str, outcome: str = "success") -> str:
+    """Mark an agent as completed or failed.
+
+    Call this when an agent finishes its work.
+
+    Args:
+        agent_id: The agent instance ID.
+        outcome: 'success' or 'failed' (with optional reason after colon).
+
+    Returns:
+        Final agent status with conformance summary.
+    """
+    t0 = _log_call("agent_complete", {"agent_id": agent_id, "outcome": outcome})
+    try:
+        monitor = _get_monitor()
+
+        if outcome.startswith("failed"):
+            reason = outcome.split(":", 1)[1].strip() if ":" in outcome else "Agent failed"
+            monitor.fail_agent(agent_id, reason)
+        # If success, the last transition should have reached end state
+        # Check if already completed
+        status = monitor.get_status(agent_id)
+
+        result = (
+            f"Agent {agent_id}: {status['status']}\n"
+            f"  Type: {status['agent_type']}\n"
+            f"  Step: {status['step']}\n"
+            f"  Transitions: {status['transitions_taken']}\n"
+            f"  Elapsed: {status['elapsed_ms']}ms\n"
+        )
+        if status.get('violation'):
+            result += f"  VIOLATION: {status['violation']}\n"
+
+        _log_result("agent_complete", t0, result)
+        return result
+    except Exception as e:
+        error = f"Error: {e}"
+        _log_error("agent_complete", t0, error)
+        return error
+
+
+@mcp.tool()
+def agent_dashboard() -> str:
+    """Show the real-time agent monitoring dashboard.
+
+    Displays all tracked agent instances with their protocol states,
+    traces, violations, and conformance statistics.
+
+    Returns:
+        Human-readable dashboard of all monitored agents.
+    """
+    t0 = _log_call("agent_dashboard", {})
+    try:
+        monitor = _get_monitor()
+        result = monitor.dashboard()
+        report = monitor.conformance_report()
+        result += f"\n  Conformance rate: {report['conformance_rate']:.1%}\n"
+        _log_result("agent_dashboard", t0, result)
+        return result
+    except Exception as e:
+        error = f"Error: {e}"
+        _log_error("agent_dashboard", t0, error)
+        return error
+
+
+def _get_agent_protocol(registry_name: str) -> str:
+    """Get the session type string for an agent type."""
+    try:
+        from reticulate.agent_registry import AGENTS
+        agent = AGENTS.get(registry_name)
+        return agent.session_type if agent else "unknown"
+    except Exception:
+        return "unknown"
+
+
 if __name__ == "__main__":
     logger.info(
-        "Server ready — 17 tools: analyze, test_gen, hasse, invariants, "
+        "Server ready — 21 tools: analyze, test_gen, hasse, invariants, "
         "conformance, petri_net, coverage, compress_type, analyze_global, "
         "ci_check, supervise_programme, evaluate, subtype_check, dual, "
-        "trace_validate, check_modularity, import_protocol"
+        "trace_validate, check_modularity, import_protocol, "
+        "agent_start, agent_transition, agent_complete, agent_dashboard"
     )
     mcp.run()
     logger.info(
