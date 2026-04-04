@@ -335,3 +335,166 @@ class TestDetails:
     def test_theorem_details(self) -> None:
         r = theorem_from_type("&{a: end, b: end}")
         assert "HOLDS" in r.details
+
+
+# ---------------------------------------------------------------------------
+# Bisimulation ↔ Lattice Isomorphism Correspondence (CONCUR 2026)
+# ---------------------------------------------------------------------------
+
+from reticulate.process_equivalence import (
+    BisimIsomorphismResult,
+    check_bisim_iso_correspondence,
+    check_bisim_iso_from_types,
+    verify_bisim_iso_theorem,
+)
+
+
+class TestBisimIsoCorrespondenceIdentical:
+    """Identical types: bisimilar AND isomorphic."""
+
+    def test_simple_branch(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end}", "&{a: end}")
+        assert r.bisimilar
+        assert r.isomorphic
+        assert r.correspondence_holds
+
+    def test_two_branch(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end, b: end}", "&{a: end, b: end}")
+        assert r.bisimilar
+        assert r.isomorphic
+        assert r.correspondence_holds
+
+    def test_selection(self) -> None:
+        r = check_bisim_iso_from_types("+{OK: end, ERR: end}", "+{OK: end, ERR: end}")
+        assert r.bisimilar
+        assert r.isomorphic
+        assert r.correspondence_holds
+
+    def test_recursive(self) -> None:
+        r = check_bisim_iso_from_types(
+            "rec X . &{a: X, b: end}",
+            "rec X . &{a: X, b: end}",
+        )
+        assert r.bisimilar
+        assert r.isomorphic
+        assert r.correspondence_holds
+
+    def test_nested(self) -> None:
+        r = check_bisim_iso_from_types(
+            "&{a: &{c: end}, b: end}",
+            "&{a: &{c: end}, b: end}",
+        )
+        assert r.correspondence_holds
+
+
+class TestBisimIsoCorrespondenceNonEquivalent:
+    """Non-equivalent types: NOT bisimilar AND NOT isomorphic."""
+
+    def test_different_labels(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end}", "&{b: end}")
+        assert not r.bisimilar
+        assert not r.isomorphic
+        assert r.correspondence_holds
+
+    def test_different_arity(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end}", "&{a: end, b: end}")
+        assert not r.bisimilar
+        assert not r.isomorphic
+        assert r.correspondence_holds
+
+    def test_different_depth(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end}", "&{a: &{b: end}}")
+        assert not r.bisimilar
+        assert not r.isomorphic
+        assert r.correspondence_holds
+
+    def test_branch_vs_selection(self) -> None:
+        """Branch and selection with same labels: isomorphic lattices but
+        different transition labels, so NOT bisimilar, NOT isomorphic
+        (transition labels differ)."""
+        r = check_bisim_iso_from_types("&{a: end, b: end}", "+{a: end, b: end}")
+        # These have the same state-space shape but different polarity
+        # The morphism finder checks label compatibility
+        assert r.correspondence_holds
+
+
+class TestBisimIsoCorrespondenceStructural:
+    """Structurally equivalent but syntactically different."""
+
+    def test_label_renaming_breaks_bisim(self) -> None:
+        """Different labels = not bisimilar."""
+        r = check_bisim_iso_from_types("&{x: end}", "&{y: end}")
+        assert not r.bisimilar
+        assert r.correspondence_holds
+
+    def test_end_vs_end(self) -> None:
+        r = check_bisim_iso_from_types("end", "end")
+        assert r.bisimilar
+        assert r.isomorphic
+        assert r.correspondence_holds
+
+
+class TestBisimIsoProperties:
+    """Check properties of the result."""
+
+    def test_deterministic(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end, b: end}", "&{a: end, b: end}")
+        assert r.ss1_deterministic
+        assert r.ss2_deterministic
+
+    def test_lattice(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end, b: end}", "&{a: end, b: end}")
+        assert r.ss1_is_lattice
+        assert r.ss2_is_lattice
+
+    def test_mapping_exists_when_isomorphic(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end, b: end}", "&{a: end, b: end}")
+        assert r.isomorphism_mapping is not None
+
+    def test_mapping_none_when_not_isomorphic(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end}", "&{a: end, b: end}")
+        assert r.isomorphism_mapping is None
+
+    def test_details_string(self) -> None:
+        r = check_bisim_iso_from_types("&{a: end}", "&{a: end}")
+        assert "HOLDS" in r.details
+
+
+class TestBisimIsoTheorem:
+    """Verify the correspondence across multiple types at once."""
+
+    def test_small_suite(self) -> None:
+        types = [
+            "end",
+            "&{a: end}",
+            "&{a: end, b: end}",
+            "+{OK: end, ERR: end}",
+            "&{a: &{b: end}}",
+        ]
+        holds, tested, passed, cex = verify_bisim_iso_theorem(types)
+        assert holds, f"Counterexample: {cex}"
+        assert tested == 15  # C(5,2) + 5 self-pairs = 15
+
+    def test_recursive_suite(self) -> None:
+        types = [
+            "rec X . &{a: X, b: end}",
+            "rec X . &{next: X, stop: end}",
+            "rec X . &{a: X, b: end, c: end}",
+        ]
+        holds, tested, passed, cex = verify_bisim_iso_theorem(types)
+        assert holds, f"Counterexample: {cex}"
+
+    def test_benchmark_protocols(self) -> None:
+        """Test on a selection of benchmark protocols."""
+        types = [
+            # Iterator
+            "rec X . &{hasNext: +{TRUE: &{next: X}, FALSE: end}}",
+            # File
+            "&{open: rec X . &{read: +{data: X, eof: &{close: end}}}}",
+            # Simple branch
+            "&{a: end, b: end}",
+            # Nested
+            "&{a: &{b: end, c: end}, d: end}",
+        ]
+        holds, tested, passed, cex = verify_bisim_iso_theorem(types)
+        assert holds, f"Counterexample: {cex}"

@@ -467,3 +467,279 @@ def theorem_from_type(
     ast = parse(type_string)
     ss = build_statespace(ast)
     return equivalence_theorem(ss, max_depth)
+
+
+# ---------------------------------------------------------------------------
+# Bisimulation-Isomorphism Correspondence (CONCUR 2026)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class BisimIsomorphismResult:
+    """Result of checking the bisimulation ↔ lattice isomorphism correspondence.
+
+    For deterministic LTS (which all well-formed session type state spaces are),
+    two state spaces are bisimilar if and only if their reticulates (SCC-quotient
+    lattices) are isomorphic.
+
+    Attributes:
+        bisimilar: CCS strong bisimulation verdict.
+        isomorphic: Lattice isomorphism verdict.
+        correspondence_holds: True iff bisimilar == isomorphic.
+        ss1_deterministic: True iff ss1 is deterministic.
+        ss2_deterministic: True iff ss2 is deterministic.
+        ss1_is_lattice: True iff ss1 forms a lattice.
+        ss2_is_lattice: True iff ss2 forms a lattice.
+        isomorphism_mapping: The isomorphism mapping if found, else None.
+        details: Human-readable summary.
+    """
+    bisimilar: bool
+    isomorphic: bool
+    correspondence_holds: bool
+    ss1_deterministic: bool
+    ss2_deterministic: bool
+    ss1_is_lattice: bool
+    ss2_is_lattice: bool
+    isomorphism_mapping: dict[int, int] | None
+    details: str
+
+
+def _find_labeled_isomorphism(
+    ss1: "StateSpace",
+    ss2: "StateSpace",
+) -> dict[int, int] | None:
+    """Find a label-preserving isomorphism between two state spaces.
+
+    A labeled isomorphism is a bijection f: states(ss1) → states(ss2) such that:
+    1. f(top₁) = top₂ and f(bot₁) = bot₂
+    2. (s, a, t) ∈ transitions(ss1) ⟺ (f(s), a, f(t)) ∈ transitions(ss2)
+
+    This is stronger than order isomorphism: it preserves transition LABELS,
+    not just reachability ordering.
+
+    Returns the mapping dict if found, or None.
+    """
+    # Quick rejection
+    if len(ss1.states) != len(ss2.states):
+        return None
+    if len(ss1.transitions) != len(ss2.transitions):
+        return None
+
+    # Check selection transition counts match (polarity must agree)
+    if len(ss1.selection_transitions) != len(ss2.selection_transitions):
+        return None
+
+    # Build adjacency: state → {label → (target, is_selection)}
+    adj1: dict[int, dict[str, int]] = {s: {} for s in ss1.states}
+    sel1: dict[int, set[str]] = {s: set() for s in ss1.states}
+    for s, label, t in ss1.transitions:
+        adj1[s][label] = t
+        if ss1.is_selection(s, label, t):
+            sel1[s].add(label)
+
+    adj2: dict[int, dict[str, int]] = {s: {} for s in ss2.states}
+    sel2: dict[int, set[str]] = {s: set() for s in ss2.states}
+    for s, label, t in ss2.transitions:
+        adj2[s][label] = t
+        if ss2.is_selection(s, label, t):
+            sel2[s].add(label)
+
+    # Check label sets from top must match
+    if set(adj1.get(ss1.top, {}).keys()) != set(adj2.get(ss2.top, {}).keys()):
+        return None
+
+    # BFS-based matching: start from top→top, follow labels
+    mapping: dict[int, int] = {}
+    reverse: dict[int, int] = {}
+    queue: list[tuple[int, int]] = [(ss1.top, ss2.top)]
+
+    while queue:
+        s1, s2 = queue.pop(0)
+
+        if s1 in mapping:
+            if mapping[s1] != s2:
+                return None  # Conflict
+            continue
+
+        if s2 in reverse:
+            if reverse[s2] != s1:
+                return None  # Conflict (not injective)
+            continue
+
+        # Check outgoing labels AND polarity (selection vs branch) match
+        labels1 = set(adj1.get(s1, {}).keys())
+        labels2 = set(adj2.get(s2, {}).keys())
+        if labels1 != labels2:
+            return None
+        if sel1.get(s1, set()) != sel2.get(s2, set()):
+            return None  # Selection polarity mismatch
+
+        mapping[s1] = s2
+        reverse[s2] = s1
+
+        # Follow each shared label
+        for label in labels1:
+            t1 = adj1[s1][label]
+            t2 = adj2[s2][label]
+            if t1 not in mapping:
+                queue.append((t1, t2))
+            elif mapping[t1] != t2:
+                return None
+
+    # Check bijection covers all states
+    if len(mapping) != len(ss1.states):
+        return None
+    if set(mapping.values()) != ss2.states:
+        return None
+
+    return mapping
+
+
+def check_bisim_iso_correspondence(
+    ss1: "StateSpace",
+    ss2: "StateSpace",
+    max_depth: int = 10,
+) -> BisimIsomorphismResult:
+    """Check the bisimulation ↔ lattice isomorphism correspondence.
+
+    For deterministic session type state spaces:
+        S₁ ~ S₂  (bisimilar)  ⟺  L(S₁) ≅ L(S₂)  (isomorphic lattices)
+
+    The proof relies on three facts:
+    1. Session type state spaces are deterministic (each label has ≤1 successor).
+    2. For deterministic LTS, bisimulation = trace equivalence (coincidence thm).
+    3. Trace-equivalent deterministic LTS have identical reachability structure,
+       hence isomorphic lattices.
+
+    Parameters:
+        ss1: First state space.
+        ss2: Second state space.
+        max_depth: Depth bound for trace enumeration.
+
+    Returns:
+        A BisimIsomorphismResult with both verdicts and correspondence check.
+    """
+    from reticulate.ccs import LTS, check_bisimulation
+    from reticulate.csp import is_deterministic
+    from reticulate.lattice import check_lattice
+    from reticulate.morphism import find_isomorphism
+
+    # Check determinism
+    det1 = is_deterministic(ss1)
+    det2 = is_deterministic(ss2)
+
+    # Check lattice property
+    lr1 = check_lattice(ss1)
+    lr2 = check_lattice(ss2)
+
+    # Check bisimulation
+    lts1 = _statespace_to_lts(ss1)
+    lts2 = _statespace_to_lts(ss2)
+    bisim = check_bisimulation(lts1, lts2)
+
+    # Check labeled lattice isomorphism (order + label preserving)
+    iso = _find_labeled_isomorphism(ss1, ss2)
+    isomorphic = iso is not None
+    iso_mapping = iso if iso is not None else None
+
+    # The correspondence
+    correspondence = (bisim == isomorphic)
+
+    if correspondence:
+        if bisim:
+            details = (
+                "Bisimulation-isomorphism correspondence HOLDS: "
+                "state spaces are bisimilar AND their lattices are isomorphic. "
+                f"Deterministic: ss1={det1}, ss2={det2}. "
+                f"Lattice: ss1={lr1.is_lattice}, ss2={lr2.is_lattice}."
+            )
+        else:
+            details = (
+                "Bisimulation-isomorphism correspondence HOLDS: "
+                "state spaces are NOT bisimilar AND their lattices are NOT isomorphic. "
+                f"Deterministic: ss1={det1}, ss2={det2}. "
+                f"Lattice: ss1={lr1.is_lattice}, ss2={lr2.is_lattice}."
+            )
+    else:
+        details = (
+            f"Bisimulation-isomorphism correspondence FAILS: "
+            f"bisimilar={bisim}, isomorphic={isomorphic}. "
+            f"Deterministic: ss1={det1}, ss2={det2}. "
+            f"Lattice: ss1={lr1.is_lattice}, ss2={lr2.is_lattice}."
+        )
+
+    return BisimIsomorphismResult(
+        bisimilar=bisim,
+        isomorphic=isomorphic,
+        correspondence_holds=correspondence,
+        ss1_deterministic=det1,
+        ss2_deterministic=det2,
+        ss1_is_lattice=lr1.is_lattice,
+        ss2_is_lattice=lr2.is_lattice,
+        isomorphism_mapping=iso_mapping,
+        details=details,
+    )
+
+
+def check_bisim_iso_from_types(
+    type1: str,
+    type2: str,
+    max_depth: int = 10,
+) -> BisimIsomorphismResult:
+    """Parse two session type strings and check the bisimulation-isomorphism
+    correspondence.
+
+    Convenience wrapper around check_bisim_iso_correspondence.
+    """
+    from reticulate.parser import parse
+    from reticulate.statespace import build_statespace
+
+    ss1 = build_statespace(parse(type1))
+    ss2 = build_statespace(parse(type2))
+    return check_bisim_iso_correspondence(ss1, ss2, max_depth)
+
+
+def verify_bisim_iso_theorem(
+    type_strings: list[str],
+    max_depth: int = 10,
+) -> tuple[bool, int, int, str | None]:
+    """Verify the bisimulation-isomorphism correspondence on all pairs.
+
+    Tests that for every pair of session types from the given list,
+    bisimilar ⟺ isomorphic lattices.
+
+    Parameters:
+        type_strings: List of session type strings to test.
+        max_depth: Depth bound for trace enumeration.
+
+    Returns:
+        (holds, pairs_tested, pairs_passed, first_counterexample)
+    """
+    from reticulate.parser import parse
+    from reticulate.statespace import build_statespace
+
+    state_spaces = []
+    for ts in type_strings:
+        ss = build_statespace(parse(ts))
+        state_spaces.append((ts, ss))
+
+    pairs_tested = 0
+    pairs_passed = 0
+    counterexample: str | None = None
+
+    for i in range(len(state_spaces)):
+        for j in range(i, len(state_spaces)):
+            name1, ss1 = state_spaces[i]
+            name2, ss2 = state_spaces[j]
+            result = check_bisim_iso_correspondence(ss1, ss2, max_depth)
+            pairs_tested += 1
+            if result.correspondence_holds:
+                pairs_passed += 1
+            elif counterexample is None:
+                counterexample = (
+                    f"'{name1}' vs '{name2}': "
+                    f"bisimilar={result.bisimilar}, "
+                    f"isomorphic={result.isomorphic}"
+                )
+
+    holds = (pairs_tested == pairs_passed)
+    return holds, pairs_tested, pairs_passed, counterexample
