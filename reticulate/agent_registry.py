@@ -336,6 +336,13 @@ AGENTS: dict[str, AgentType] = {
         description="Evaluates paper-venue fit using keyword analysis and Jaccard similarity (venue_matcher.py)",
         transport="stdio",
     ),
+    "ExerciseWriter": AgentType(
+        name="ExerciseWriter",
+        protocol="A2A",
+        session_type="rec X . &{writeExercises: +{exercisesReady: &{checkSolutions: +{allComplete: end, missingSolution: &{addSolution: X}}}}}",
+        description="Creates exercises.tex with 15-20 progressive-difficulty problems and complete solutions across 4 tiers: definitions, computation, proof, open-ended research",
+        transport="Agent()",
+    ),
 }
 
 # The orchestrator's full recursive protocol with parallel constructors.
@@ -359,7 +366,7 @@ WRITE_AGENTS = (
     "Writer", "StepWriter", "MonographWriter",
     "TOPLASWriter", "CONCURWriter", "ICEWriter", "JournalWriter",
     "ToolPaperWriter", "SurveyWriter", "CrossDomainWriter",
-    "Prover", "TechWriter", "Archivist", "Librarian",
+    "Prover", "TechWriter", "Archivist", "Librarian", "ExerciseWriter",
 )
 QUALITY_AGENTS = ("Evaluator", "Reviewer", "Connector", "PeerReviewer", "FactChecker")
 MANAGEMENT_AGENTS = ("Supervisor",)
