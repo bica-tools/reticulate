@@ -300,14 +300,14 @@ class TestBenchmarks:
                 count += 1
         assert count >= 1
 
-    def test_parallel_benchmark_two_buyer(self) -> None:
-        """Two-Buyer uses parallel and analysis should complete."""
-        bp = next(b for b in BENCHMARKS if b.name == "Two-Buyer")
-        ss = _build(bp.type_string)
+    def test_small_parallel_benchmark(self) -> None:
+        """Small parallel protocol analysis should complete."""
+        # Use a small hand-crafted parallel instead of large benchmarks
+        ss = _build("(&{a: end} || &{b: end})")
         lr = check_lattice(ss)
-        if lr.is_lattice:
-            result = analyze_factorization(ss, lr)
-            assert result.factor_count >= 1
+        assert lr.is_lattice
+        result = analyze_factorization(ss, lr)
+        assert result.factor_count == 2
 
     def test_java_iterator_indecomposable(self) -> None:
         """Java Iterator is a simple loop, should be indecomposable."""
