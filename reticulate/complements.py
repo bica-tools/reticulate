@@ -20,6 +20,7 @@ behavior while overlapping only at terminal/initial states.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -330,11 +331,8 @@ def boolean_rank(ss: StateSpace,
         lr = check_lattice(ss)
     if not is_boolean(ss, lr):
         return None
-    # Count quotient nodes (SCC representatives)
     scc_map = lr.scc_map or {}
     n = len(set(scc_map.values())) if scc_map else len(ss.states)
-    # 2^k = n  =>  k = log2(n)
-    import math
     k = int(math.log2(n)) if n > 0 else 0
     if 2 ** k == n:
         return k
@@ -354,7 +352,7 @@ def analyze_complements(ss: StateSpace,
             is_boolean=False,
             is_distributive=False,
             complement_map={},
-            uncomplemented_elements=tuple(range(len(ss.states))),
+            uncomplemented_elements=tuple(ss.states),
             complement_count=0,
             element_count=len(ss.states),
             boolean_rank=None,
@@ -388,7 +386,6 @@ def analyze_complements(ss: StateSpace,
     # Boolean rank
     b_rank = None
     if bool_lattice:
-        import math
         n = len(nodes)
         k = int(math.log2(n)) if n > 0 else 0
         if 2 ** k == n:

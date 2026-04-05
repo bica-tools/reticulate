@@ -30,14 +30,14 @@ class TestFindAutomorphisms:
     def test_end_identity(self):
         """1-element lattice has exactly the identity."""
         ss, lr = _build("end")
-        auts = find_automorphisms(ss, lr)
+        auts, _ = find_automorphisms(ss, lr)
         assert len(auts) == 1
         assert auts[0].is_identity
 
     def test_two_chain_identity(self):
         """2-element chain: only identity (top≠bottom)."""
         ss, lr = _build("&{a: end}")
-        auts = find_automorphisms(ss, lr)
+        auts, _ = find_automorphisms(ss, lr)
         assert len(auts) == 1
         assert auts[0].is_identity
 
@@ -45,21 +45,21 @@ class TestFindAutomorphisms:
         """&{a: end, b: end} has 2 automorphisms (swap a,b targets)."""
         ss, lr = _build("&{a: end, b: end}")
         if lr.is_lattice:
-            auts = find_automorphisms(ss, lr)
+            auts, _ = find_automorphisms(ss, lr)
             # The two intermediate states can be swapped
             assert len(auts) >= 1
 
     def test_chain_3_identity_only(self):
         """3-element chain: only identity."""
         ss, lr = _build("&{a: &{b: end}}")
-        auts = find_automorphisms(ss, lr)
+        auts, _ = find_automorphisms(ss, lr)
         assert len(auts) == 1
 
     def test_parallel_has_symmetry(self):
         """(&{a: end} || &{b: end}) — 4-element Boolean lattice has symmetry."""
         ss, lr = _build("(&{a: end} || &{b: end})")
         if lr.is_lattice:
-            auts = find_automorphisms(ss, lr)
+            auts, _ = find_automorphisms(ss, lr)
             # Boolean lattice 2^2 has Aut ≅ S₂ (swap the two atoms)
             assert len(auts) >= 2
 
@@ -68,22 +68,23 @@ class TestFindAutomorphisms:
         for ts in ["end", "&{a: end}", "&{a: &{b: end}}", "&{a: end, b: end}"]:
             ss, lr = _build(ts)
             if lr.is_lattice:
-                auts = find_automorphisms(ss, lr)
+                auts, _ = find_automorphisms(ss, lr)
                 assert any(a.is_identity for a in auts), f"No identity for {ts}"
 
     def test_non_lattice_empty(self):
         """Non-lattice returns empty."""
         ss, lr = _build("&{a: end, b: rec X . &{a: X}}")
         if not lr.is_lattice:
-            assert find_automorphisms(ss, lr) == []
+            auts, _ = find_automorphisms(ss, lr)
+            assert auts == []
 
     def test_automorphism_has_correct_fields(self):
         """Automorphism dataclass has all fields."""
         ss, lr = _build("&{a: end}")
-        auts = find_automorphisms(ss, lr)
+        auts, _ = find_automorphisms(ss, lr)
         a = auts[0]
         assert isinstance(a, Automorphism)
-        assert isinstance(a.mapping, tuple)
+        assert isinstance(a.mapping, dict)
         assert isinstance(a.fixed_points, tuple)
         assert isinstance(a.is_identity, bool)
         assert isinstance(a.order, int)
@@ -176,7 +177,7 @@ class TestProperties:
     def test_identity_has_order_1(self):
         """Identity automorphism has order 1."""
         ss, lr = _build("&{a: end}")
-        auts = find_automorphisms(ss, lr)
+        auts, _ = find_automorphisms(ss, lr)
         for a in auts:
             if a.is_identity:
                 assert a.order == 1
@@ -185,7 +186,7 @@ class TestProperties:
         """Non-identity automorphism has order >= 2."""
         ss, lr = _build("(&{a: end} || &{b: end})")
         if lr.is_lattice:
-            auts = find_automorphisms(ss, lr)
+            auts, _ = find_automorphisms(ss, lr)
             for a in auts:
                 if not a.is_identity:
                     assert a.order >= 2
