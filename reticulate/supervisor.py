@@ -704,9 +704,23 @@ def _generate_step_proposals(snapshot: ProgrammeSnapshot) -> list[Proposal]:
 def _generate_tool_proposals(snapshot: ProgrammeSnapshot) -> list[Proposal]:
     """Generate tool proposals based on programme state."""
     proposals: list[Proposal] = []
-    _, module_names = _scan_modules(_find_project_root())
+    root = _find_project_root()
+    _, module_names = _scan_modules(root)
 
-    # Always propose missing MCP tools
+    # Detect which MCP tools are already exposed in mcp_server.py so we
+    # don't keep proposing tools that already exist.
+    existing_mcp_tools: set[str] = set()
+    mcp_server_path = root / "reticulate" / "reticulate" / "mcp_server.py"
+    if mcp_server_path.is_file():
+        try:
+            src = mcp_server_path.read_text()
+            # Match: @mcp.tool(...)\ndef <name>(
+            existing_mcp_tools = set(re.findall(
+                r"@mcp\.tool\([^)]*\)\s*\ndef\s+(\w+)\s*\(", src))
+        except OSError:
+            pass
+
+    # Propose only those MCP tools that are NOT already exposed
     mcp_tools_wanted = [
         ("subtype_check", "Backward compatibility verification",
          "Expose is_subtype() as MCP tool for CI integration.", "high"),
@@ -718,6 +732,8 @@ def _generate_tool_proposals(snapshot: ProgrammeSnapshot) -> list[Proposal]:
          "Combine subtyping + morphism to show what changed between versions.", "medium"),
     ]
     for name, title, rationale, priority in mcp_tools_wanted:
+        if name in existing_mcp_tools:
+            continue
         proposals.append(Proposal("tool", f"MCP tool: {name} — {title}",
                                   rationale, priority))
 
