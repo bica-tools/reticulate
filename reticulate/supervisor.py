@@ -438,10 +438,16 @@ def _assign_phase(num: str) -> str:
         return "II: Morphisms (151-170)"
     elif 200 <= n <= 210:
         return "III: Formalization (200-210)"
+    elif 301 <= n <= 350:
+        return "IV: Lattice Theory (301-350)"
     elif 351 <= n <= 400:
         return "IV: Bisimulation (351-400)"
-    elif 501 <= n <= 650:
-        return "V: Metatheory (501-650)"
+    elif 401 <= n <= 499:
+        return "IV: Language Hierarchy (401-499)"
+    elif 500 <= n <= 599:
+        return "V: Philosophy (500-599)"
+    elif 600 <= n <= 650:
+        return "V: Physics & Sciences (600-650)"
     elif 651 <= n <= 800:
         return "VI: Comparisons (651-800)"
     elif 801 <= n <= 950:
